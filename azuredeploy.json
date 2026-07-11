@@ -1,0 +1,27 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "identityName": {
+      "type": "string",
+      "defaultValue": "after-party-button-test",
+      "metadata": {
+        "description": "Name of the test managed identity."
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+      "apiVersion": "2023-01-31",
+      "name": "[parameters('identityName')]",
+      "location": "[resourceGroup().location]"
+    }
+  ],
+  "outputs": {
+    "message": {
+      "type": "string",
+      "value": "The After Party test managed identity was created successfully."
+    }
+  }
+}

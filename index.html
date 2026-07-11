@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>After Party Azure Test</title>
+
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family:
+        Inter, system-ui, -apple-system, BlinkMacSystemFont,
+        "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at top, #26365f, transparent 45%),
+        #0b1020;
+      color: #f5f7ff;
+    }
+
+    main {
+      width: min(680px, calc(100% - 32px));
+      padding: 48px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 24px;
+      background: rgba(19, 27, 51, 0.86);
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+    }
+
+    .eyebrow {
+      margin: 0 0 12px;
+      color: #9eb5ff;
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0 0 16px;
+      font-size: clamp(2rem, 7vw, 3.5rem);
+      line-height: 1;
+    }
+
+    p {
+      max-width: 55ch;
+      margin: 0 0 28px;
+      color: #c8d0e7;
+      font-size: 1.05rem;
+      line-height: 1.65;
+    }
+
+    .deploy-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 52px;
+      padding: 0 24px;
+      border-radius: 12px;
+      background: #5f7cff;
+      color: white;
+      font-weight: 700;
+      text-decoration: none;
+      transition:
+        transform 150ms ease,
+        background 150ms ease;
+    }
+
+    .deploy-button:hover {
+      background: #7891ff;
+      transform: translateY(-2px);
+    }
+
+    .note {
+      margin-top: 24px;
+      margin-bottom: 0;
+      color: #8f9ab8;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+
+<body>
+  <main>
+    <p class="eyebrow">After Party</p>
+
+    <h1>Azure button test</h1>
+
+    <p>
+      This test opens the Azure deployment screen and creates one
+      user-assigned managed identity in a resource group you select.
+    </p>
+
+    <a
+      id="deploy-button"
+      class="deploy-button"
+      href="#"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      Deploy test resource
+    </a>
+
+    <p class="note">
+      Azure will ask you to sign in and review the deployment before
+      anything is created.
+    </p>
+  </main>
+
+  <script>
+    const githubUsername = "seanwest1-flatiron";
+    const repositoryName = "azure-test";
+
+    const templateUrl =
+      `https://raw.githubusercontent.com/` +
+      `${githubUsername}/${repositoryName}/main/azuredeploy.json`;
+
+    const azurePortalBase =
+      "https://portal.azure.com/#create/Microsoft.Template/uri/";
+
+    document.getElementById("deploy-button").href =
+      azurePortalBase + encodeURIComponent(templateUrl);
+  </script>
+</body>
+</html>
