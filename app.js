@@ -11,7 +11,7 @@
   const RUNNER_STORAGE_KEY = "afterParty.runner.v1";
   const PENDING_OPERATION_KEY = "afterParty.pendingOperation.v1";
   const apiVersions = Object.freeze({ resources: "2021-04-01", deployments: "2022-09-01", automation: "2024-10-23" });
-  const el = Object.fromEntries(["configuration-warning", "status", "sign-in", "sign-out", "account", "authorization", "authorize-azure", "subscription", "resource-group", "location", "automation-name", "install", "run", "run-file-share"].map(id => [id, document.getElementById(id)]));
+  const el = Object.fromEntries(["configuration-warning", "status", "sign-in", "sign-out", "account", "authorization", "authorize-azure", "subscription", "resource-group", "location", "automation-name", "install", "run", "run-file-share", "run-email-triage"].map(id => [id, document.getElementById(id)]));
   let msalClient;
   let account;
   let busy = false;
@@ -95,6 +95,7 @@
     const runner = getRunner();
     el.run.disabled = busy || !signedIn || !runner || runner.tenantId !== account.tenantId;
     el["run-file-share"].disabled = busy || !signedIn || !runner || runner.tenantId !== account.tenantId;
+    el["run-email-triage"].disabled = busy || !signedIn || !runner || runner.tenantId !== account.tenantId;
   }
 
   async function token(scopes, operation) {
@@ -292,6 +293,9 @@
       case "runOneDriveShareLab":
         await runLab("labs/share-onedrive-file.ps1", "runOneDriveShareLab", "OneDrive sharing lab");
         return;
+      case "runEmailTriageLab":
+        await runLab("labs/send-email-triage-simulation.ps1", "runEmailTriageLab", "Email triage simulation");
+        return;
       default:
         setStatus("Signed in. Choose an action to authorize and continue.", "success");
     }
@@ -345,5 +349,6 @@
   el.install.addEventListener("click", () => handleAction(installRunner));
   el.run.addEventListener("click", () => handleAction(() => runLab("labs/send-email.ps1", "runEmailLab", "Email lab")));
   el["run-file-share"].addEventListener("click", () => handleAction(() => runLab("labs/share-onedrive-file.ps1", "runOneDriveShareLab", "OneDrive sharing lab")));
+  el["run-email-triage"].addEventListener("click", () => handleAction(() => runLab("labs/send-email-triage-simulation.ps1", "runEmailTriageLab", "Email triage simulation")));
   initialize().catch(error => setStatus(explainError(error), "error"));
 })();

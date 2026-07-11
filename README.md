@@ -46,3 +46,8 @@ isolated training tenant before using this design elsewhere.
 - `runbooks/bootstrap.ps1`: stable runner installed into Automation
 - `labs/send-email.ps1`: replaceable lab payload downloaded for every job
 - `labs/share-onedrive-file.ps1`: creates and shares a OneDrive text file
+- `labs/send-email-triage-simulation.ps1`: sends benign email-triage exercises
+
+The triage lab intentionally does not submit automated phishing reports or host
+phishing pages. Real user-report telemetry is produced only when a user reports
+a selected training message in Outlook or Outlook on the web.
