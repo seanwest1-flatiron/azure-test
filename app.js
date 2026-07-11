@@ -39,11 +39,16 @@
   }
 
   function setEnvironment(message, kind = "") {
+    if (!el["environment-status"]) return;
     el["environment-status"].textContent = message;
     el["environment-status"].className = `environment-status ${kind}`.trim();
   }
 
   function setJobStatus(element, message, kind = "", output = "") {
+    if (!element) {
+      setStatus(message, kind);
+      return;
+    }
     element.hidden = false;
     element.className = `job-status ${kind}`.trim();
     element.replaceChildren(document.createTextNode(message));
@@ -110,7 +115,7 @@
     el["resource-group"].disabled = busy || !signedIn || !el.subscription.value;
     el.install.disabled = busy || !signedIn || !environmentSelected;
     el.install.textContent = ready ? "Update environment" : "Set up environment";
-    [el.run, el["run-file-share"], el["run-email-triage"], el["run-customer-payment-export"]].forEach(button => {
+    [el.run, el["run-file-share"], el["run-email-triage"], el["run-customer-payment-export"]].filter(Boolean).forEach(button => {
       button.disabled = busy || !signedIn || !ready;
     });
   }
@@ -449,21 +454,26 @@
     try { await action(); } catch (error) { if (error !== redirecting) setStatus(explainError(error), "error"); }
   }
 
-  el["sign-in"].addEventListener("click", () => handleAction(async () => {
+  function bind(id, event, handler) {
+    const element = el[id];
+    if (element) element.addEventListener(event, handler);
+  }
+
+  bind("sign-in", "click", () => handleAction(async () => {
     setStatus("Redirecting to Microsoft to sign in…");
     await msalClient.loginRedirect({ scopes: ["openid", "profile"] });
   }));
-  el["sign-out"].addEventListener("click", () => {
+  bind("sign-out", "click", () => {
     sessionStorage.removeItem(PENDING_OPERATION_KEY);
     return msalClient.logoutRedirect({ account });
   });
-  el["authorize-azure"].addEventListener("click", () => handleAction(() => loadSubscriptions()));
-  el.subscription.addEventListener("change", () => handleAction(() => loadResourceGroups()));
-  el["resource-group"].addEventListener("change", () => handleAction(() => discoverRunner()));
-  el.install.addEventListener("click", () => handleAction(installRunner));
-  el.run.addEventListener("click", () => handleAction(() => runOperation("payloads/send-email.ps1", "sendEmail", "Email", el["email-job-status"])));
-  el["run-file-share"].addEventListener("click", () => handleAction(() => runOperation("payloads/share-onedrive-file.ps1", "shareOneDriveFile", "OneDrive file sharing", el["file-share-job-status"])));
-  el["run-email-triage"].addEventListener("click", () => handleAction(() => runOperation("payloads/send-message-batch.ps1", "sendMessageBatch", "Message batch", el["message-batch-job-status"])));
-  el["run-customer-payment-export"].addEventListener("click", () => handleAction(() => runOperation("payloads/send-customer-payment-export.ps1", "sendCustomerPaymentExport", "Customer payment export", el["payment-export-job-status"])));
+  bind("authorize-azure", "click", () => handleAction(() => loadSubscriptions()));
+  bind("subscription", "change", () => handleAction(() => loadResourceGroups()));
+  bind("resource-group", "change", () => handleAction(() => discoverRunner()));
+  bind("install", "click", () => handleAction(installRunner));
+  bind("run", "click", () => handleAction(() => runOperation("payloads/send-email.ps1", "sendEmail", "Email", el["email-job-status"])));
+  bind("run-file-share", "click", () => handleAction(() => runOperation("payloads/share-onedrive-file.ps1", "shareOneDriveFile", "OneDrive file sharing", el["file-share-job-status"])));
+  bind("run-email-triage", "click", () => handleAction(() => runOperation("payloads/send-message-batch.ps1", "sendMessageBatch", "Message batch", el["message-batch-job-status"])));
+  bind("run-customer-payment-export", "click", () => handleAction(() => runOperation("payloads/send-customer-payment-export.ps1", "sendCustomerPaymentExport", "Customer payment export", el["payment-export-job-status"])));
   initialize().catch(error => setStatus(explainError(error), "error"));
 })();
