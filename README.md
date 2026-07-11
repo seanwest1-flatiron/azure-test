@@ -22,8 +22,8 @@ system-assigned managed identity at run time.
 ## Flow
 
 The site deploys `azuredeploy.json` through Azure Resource Manager, then grants
-the Automation account's managed identity the Microsoft Graph `Mail.Send`
-application role. A later button click creates an Automation job directly with
+the Automation account's managed identity the Microsoft Graph `Mail.Send` and
+`Files.ReadWrite.All` application roles. A later button click creates an Automation job directly with
 the ARM REST API. The installed bootstrap runbook downloads the selected script
 under `labs/` from the `main` branch for each job, so ordinary lab changes do not
 require runner reinstallation.
@@ -34,8 +34,9 @@ The initial lab sends from `kobe@corywest.onmicrosoft.com` to
 ## Security note
 
 Microsoft Graph application `Mail.Send` is tenant-wide unless it is restricted
-separately with Exchange Online Application RBAC. Limit it to dedicated lab
-mailboxes before using this design outside an isolated training tenant.
+separately with Exchange Online Application RBAC. `Files.ReadWrite.All` can read
+and write files across all site collections. Limit these permissions to an
+isolated training tenant before using this design elsewhere.
 
 ## Files
 
@@ -44,3 +45,4 @@ mailboxes before using this design outside an isolated training tenant.
 - `azuredeploy.json`: Automation account and bootstrap runbook deployment
 - `runbooks/bootstrap.ps1`: stable runner installed into Automation
 - `labs/send-email.ps1`: replaceable lab payload downloaded for every job
+- `labs/share-onedrive-file.ps1`: creates and shares a OneDrive text file

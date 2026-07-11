@@ -27,7 +27,7 @@
 
     <section class="card" id="install-section">
       <div class="section-heading"><div><span class="step">2</span><h2>Install runner</h2></div></div>
-      <p>Creates an Automation account, system-assigned managed identity, and bootstrap runbook in a resource group you control.</p>
+      <p>Creates an Automation account, system-assigned managed identity, and bootstrap runbook in a resource group you control. It grants the identity Graph <code>Mail.Send</code> and <code>Files.ReadWrite.All</code> application permissions for these labs.</p>
       <button id="authorize-azure" class="secondary" type="button" disabled>Authorize Azure and load subscriptions</button>
       <div class="fields">
         <label>Azure subscription<select id="subscription" disabled><option value="">Sign in first</option></select></label>
@@ -35,13 +35,19 @@
         <label>Azure region<input id="location" value="eastus" autocomplete="off" disabled></label>
         <label>Automation account name<input id="automation-name" autocomplete="off" disabled></label>
       </div>
-      <button id="install" type="button" disabled>Install runner and grant Mail.Send</button>
+      <button id="install" type="button" disabled>Install or update runner permissions</button>
     </section>
 
     <section class="card">
       <div class="section-heading"><div><span class="step">3</span><h2>Run email lab</h2></div></div>
       <p>Sends one message from <code>kobe@corywest.onmicrosoft.com</code> to <code>cory@corywest.onmicrosoft.com</code>.</p>
       <button id="run" type="button" disabled>Run lab</button>
+    </section>
+
+    <section class="card">
+      <div class="section-heading"><div><span class="step">4</span><h2>Run OneDrive sharing lab</h2></div></div>
+      <p>Creates a text file in <code>kobe@corywest.onmicrosoft.com</code>'s OneDrive and grants <code>cory@corywest.onmicrosoft.com</code> read access. Microsoft Graph sends Cory the sharing invitation.</p>
+      <button id="run-file-share" type="button" disabled>Run OneDrive sharing lab</button>
     </section>
 
     <details>

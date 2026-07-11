@@ -5,12 +5,13 @@
   const ARM = "https://management.azure.com";
   const GRAPH = "https://graph.microsoft.com/v1.0";
   const GRAPH_APP_ID = "00000003-0000-0000-c000-000000000000";
+  const LAB_APPLICATION_ROLES = Object.freeze(["Mail.Send", "Files.ReadWrite.All"]);
   const ARM_SCOPE = "https://management.azure.com/user_impersonation";
   const GRAPH_SCOPES = ["Application.Read.All", "AppRoleAssignment.ReadWrite.All"];
   const RUNNER_STORAGE_KEY = "afterParty.runner.v1";
   const PENDING_OPERATION_KEY = "afterParty.pendingOperation.v1";
   const apiVersions = Object.freeze({ resources: "2021-04-01", deployments: "2022-09-01", automation: "2024-10-23" });
-  const el = Object.fromEntries(["configuration-warning", "status", "sign-in", "sign-out", "account", "authorization", "authorize-azure", "subscription", "resource-group", "location", "automation-name", "install", "run"].map(id => [id, document.getElementById(id)]));
+  const el = Object.fromEntries(["configuration-warning", "status", "sign-in", "sign-out", "account", "authorization", "authorize-azure", "subscription", "resource-group", "location", "automation-name", "install", "run", "run-file-share"].map(id => [id, document.getElementById(id)]));
   let msalClient;
   let account;
   let busy = false;
@@ -93,6 +94,7 @@
     el.install.disabled = busy || !signedIn || !el.subscription.value || !el["resource-group"].value || !el.location.value.trim() || !el["automation-name"].value.trim();
     const runner = getRunner();
     el.run.disabled = busy || !signedIn || !runner || runner.tenantId !== account.tenantId;
+    el["run-file-share"].disabled = busy || !signedIn || !runner || runner.tenantId !== account.tenantId;
   }
 
   async function token(scopes, operation) {
@@ -172,18 +174,25 @@
     throw new Error("Timed out waiting for the Azure deployment.");
   }
 
-  async function grantMailSend(principalId) {
-    setStatus("Finding the Microsoft Graph Mail.Send application role…");
+  async function grantLabPermissions(principalId) {
+    setStatus("Finding the Microsoft Graph application roles required by the labs…");
     const result = await graph(`/servicePrincipals?$filter=${encodeURIComponent(`appId eq '${GRAPH_APP_ID}'`)}&$select=id,appRoles`);
     const graphPrincipal = result.value?.[0];
-    const mailSend = graphPrincipal?.appRoles?.find(role => role.value === "Mail.Send" && role.isEnabled && role.allowedMemberTypes?.includes("Application"));
-    if (!graphPrincipal || !mailSend) throw new Error("Microsoft Graph Mail.Send application role was not found in this tenant.");
-    setStatus("Granting Mail.Send to the Automation managed identity…");
+    if (!graphPrincipal) throw new Error("Microsoft Graph service principal was not found in this tenant.");
+    for (const roleValue of LAB_APPLICATION_ROLES) {
+      const appRole = graphPrincipal.appRoles?.find(role => role.value === roleValue && role.isEnabled && role.allowedMemberTypes?.includes("Application"));
+      if (!appRole) throw new Error(`Microsoft Graph ${roleValue} application role was not found in this tenant.`);
+      await grantApplicationRole(graphPrincipal, appRole, principalId);
+    }
+  }
+
+  async function grantApplicationRole(graphPrincipal, appRole, principalId) {
+    setStatus(`Granting ${appRole.value} to the Automation managed identity…`);
     for (let attempt = 0; attempt < 30; attempt += 1) {
       try {
         await graph(`/servicePrincipals/${graphPrincipal.id}/appRoleAssignedTo`, {
           method: "POST",
-          body: JSON.stringify({ principalId, resourceId: graphPrincipal.id, appRoleId: mailSend.id })
+          body: JSON.stringify({ principalId, resourceId: graphPrincipal.id, appRoleId: appRole.id })
         });
         return;
       } catch (error) {
@@ -223,25 +232,25 @@
       const deployment = await waitForDeployment(deploymentPath);
       const principalId = deployment.properties.outputs?.managedIdentityPrincipalId?.value;
       if (!principalId) throw new Error("Deployment succeeded but did not return the managed identity principal ID.");
-      await grantMailSend(principalId);
+      await grantLabPermissions(principalId);
       localStorage.setItem(RUNNER_STORAGE_KEY, JSON.stringify({ tenantId: account.tenantId, subscriptionId, resourceGroup, automationAccountName, runbookName: config.runbookName }));
-      setStatus("Runner installed and Mail.Send granted. The email lab is ready.", "success");
+      setStatus("Runner is ready. Mail and OneDrive sharing permissions were granted.", "success");
     } finally {
       setBusy(false);
     }
   }
 
-  async function runLab() {
+  async function runLab(labPath, operation, label) {
     const runner = getRunner();
     if (!runner || runner.tenantId !== account.tenantId) throw new Error("Install the runner in this tenant first.");
     setBusy(true);
     try {
-      await token([ARM_SCOPE], "runLab");
+      await token([ARM_SCOPE], operation);
       const jobId = crypto.randomUUID();
       const path = `/subscriptions/${encodeURIComponent(runner.subscriptionId)}/resourcegroups/${encodeURIComponent(runner.resourceGroup)}/providers/Microsoft.Automation/automationAccounts/${encodeURIComponent(runner.automationAccountName)}/jobs/${jobId}?api-version=${apiVersions.automation}`;
       setStatus("Starting the existing Automation runbook…");
-      await arm(path, { method: "PUT", body: JSON.stringify({ properties: { runbook: { name: runner.runbookName }, parameters: { LabPath: "labs/send-email.ps1" } } }) });
-      setStatus(`Lab job started. Azure job ID: ${jobId}`, "success");
+      await arm(path, { method: "PUT", body: JSON.stringify({ properties: { runbook: { name: runner.runbookName }, parameters: { LabPath: labPath } } }) });
+      setStatus(`${label} job started. Azure job ID: ${jobId}`, "success");
     } finally {
       setBusy(false);
     }
@@ -277,8 +286,11 @@
         refreshControls();
         await installRunner();
         return;
-      case "runLab":
-        await runLab();
+      case "runEmailLab":
+        await runLab("labs/send-email.ps1", "runEmailLab", "Email lab");
+        return;
+      case "runOneDriveShareLab":
+        await runLab("labs/share-onedrive-file.ps1", "runOneDriveShareLab", "OneDrive sharing lab");
         return;
       default:
         setStatus("Signed in. Choose an action to authorize and continue.", "success");
@@ -331,6 +343,7 @@
   el.location.addEventListener("input", refreshControls);
   el["automation-name"].addEventListener("input", refreshControls);
   el.install.addEventListener("click", () => handleAction(installRunner));
-  el.run.addEventListener("click", () => handleAction(runLab));
+  el.run.addEventListener("click", () => handleAction(() => runLab("labs/send-email.ps1", "runEmailLab", "Email lab")));
+  el["run-file-share"].addEventListener("click", () => handleAction(() => runLab("labs/share-onedrive-file.ps1", "runOneDriveShareLab", "OneDrive sharing lab")));
   initialize().catch(error => setStatus(explainError(error), "error"));
 })();
