@@ -22,11 +22,13 @@
         <button id="sign-out" class="secondary" type="button" hidden>Sign out</button>
       </div>
       <p id="account">Not signed in.</p>
+      <p id="authorization">Azure and Microsoft Graph access has not been authorized for an operation yet.</p>
     </section>
 
     <section class="card" id="install-section">
       <div class="section-heading"><div><span class="step">2</span><h2>Install runner</h2></div></div>
       <p>Creates an Automation account, system-assigned managed identity, and bootstrap runbook in a resource group you control.</p>
+      <button id="authorize-azure" class="secondary" type="button" disabled>Authorize Azure and load subscriptions</button>
       <div class="fields">
         <label>Azure subscription<select id="subscription" disabled><option value="">Sign in first</option></select></label>
         <label>Resource group<select id="resource-group" disabled><option value="">Choose a subscription</option></select></label>

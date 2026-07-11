@@ -8,11 +8,14 @@
   const ARM_SCOPE = "https://management.azure.com/user_impersonation";
   const GRAPH_SCOPES = ["Application.Read.All", "AppRoleAssignment.ReadWrite.All"];
   const RUNNER_STORAGE_KEY = "afterParty.runner.v1";
+  const PENDING_OPERATION_KEY = "afterParty.pendingOperation.v1";
   const apiVersions = Object.freeze({ resources: "2021-04-01", deployments: "2022-09-01", automation: "2024-10-23" });
-  const el = Object.fromEntries(["configuration-warning", "status", "sign-in", "sign-out", "account", "subscription", "resource-group", "location", "automation-name", "install", "run"].map(id => [id, document.getElementById(id)]));
+  const el = Object.fromEntries(["configuration-warning", "status", "sign-in", "sign-out", "account", "authorization", "authorize-azure", "subscription", "resource-group", "location", "automation-name", "install", "run"].map(id => [id, document.getElementById(id)]));
   let msalClient;
   let account;
   let busy = false;
+  const authorization = { arm: false, graph: false };
+  const redirecting = Symbol("redirecting");
 
   function setStatus(message, kind = "") {
     el.status.textContent = message;
@@ -29,6 +32,51 @@
     refreshControls();
   }
 
+  function setAuthorizationSummary() {
+    if (!account) {
+      el.authorization.textContent = "Azure and Microsoft Graph access has not been authorized for an operation yet.";
+      return;
+    }
+    const arm = authorization.arm ? "authorized" : "not yet authorized";
+    const graph = authorization.graph ? "authorized" : "not yet authorized";
+    el.authorization.textContent = `Signed in. Azure Resource Manager is ${arm}; Microsoft Graph admin access is ${graph}.`;
+  }
+
+  function formSnapshot() {
+    return {
+      subscriptionId: el.subscription.value,
+      resourceGroup: el["resource-group"].value,
+      location: el.location.value,
+      automationAccountName: el["automation-name"].value
+    };
+  }
+
+  function savePendingOperation(operation) {
+    sessionStorage.setItem(PENDING_OPERATION_KEY, JSON.stringify({ operation, form: formSnapshot() }));
+  }
+
+  function takePendingOperation() {
+    try {
+      const pending = JSON.parse(sessionStorage.getItem(PENDING_OPERATION_KEY));
+      sessionStorage.removeItem(PENDING_OPERATION_KEY);
+      return pending;
+    } catch {
+      sessionStorage.removeItem(PENDING_OPERATION_KEY);
+      return null;
+    }
+  }
+
+  function restoreForm(snapshot = {}) {
+    el.location.value = snapshot.location || el.location.value;
+    el["automation-name"].value = snapshot.automationAccountName || el["automation-name"].value;
+  }
+
+  function noteAuthorized(scopes) {
+    if (scopes.includes(ARM_SCOPE)) authorization.arm = true;
+    if (scopes.some(scope => GRAPH_SCOPES.includes(scope))) authorization.graph = true;
+    setAuthorizationSummary();
+  }
+
   function getRunner() {
     try { return JSON.parse(localStorage.getItem(RUNNER_STORAGE_KEY)); } catch { return null; }
   }
@@ -37,6 +85,7 @@
     const signedIn = Boolean(account);
     el["sign-in"].hidden = signedIn;
     el["sign-out"].hidden = !signedIn;
+    el["authorize-azure"].disabled = busy || !signedIn;
     el.subscription.disabled = busy || !signedIn;
     el["resource-group"].disabled = busy || !signedIn || !el.subscription.value;
     el.location.disabled = busy || !signedIn;
@@ -46,13 +95,19 @@
     el.run.disabled = busy || !signedIn || !runner || runner.tenantId !== account.tenantId;
   }
 
-  async function token(scopes) {
+  async function token(scopes, operation) {
     const request = { account, scopes };
     try {
-      return (await msalClient.acquireTokenSilent(request)).accessToken;
+      const result = await msalClient.acquireTokenSilent(request);
+      noteAuthorized(scopes);
+      return result.accessToken;
     } catch (error) {
       if (error instanceof msal.InteractionRequiredAuthError) {
-        return (await msalClient.acquireTokenPopup(request)).accessToken;
+        if (!operation) throw new Error("This operation needs authorization. Select the action again to continue.");
+        savePendingOperation(operation);
+        setStatus("You are signed in, but Microsoft needs to authorize this operation. Redirecting to Microsoft…");
+        await msalClient.acquireTokenRedirect(request);
+        throw redirecting;
       }
       throw error;
     }
@@ -75,32 +130,32 @@
     return body;
   }
 
-  async function arm(path, options = {}) {
-    return requestJson(`${ARM}${path}`, options, await token([ARM_SCOPE]));
+  async function arm(path, options = {}, operation) {
+    return requestJson(`${ARM}${path}`, options, await token([ARM_SCOPE], operation));
   }
 
-  async function graph(path, options = {}) {
-    return requestJson(`${GRAPH}${path}`, options, await token(GRAPH_SCOPES));
+  async function graph(path, options = {}, operation) {
+    return requestJson(`${GRAPH}${path}`, options, await token(GRAPH_SCOPES, operation));
   }
 
   function fillSelect(select, items, placeholder, valueKey, labelKey) {
     select.replaceChildren(new Option(placeholder, ""), ...items.map(item => new Option(item[labelKey], item[valueKey])));
   }
 
-  async function loadSubscriptions() {
+  async function loadSubscriptions(operation = "loadSubscriptions") {
     setStatus("Loading Azure subscriptions…");
-    const result = await arm(`/subscriptions?api-version=${apiVersions.resources}`);
+    const result = await arm(`/subscriptions?api-version=${apiVersions.resources}`, {}, operation);
     const subscriptions = (result.value || []).filter(item => item.state === "Enabled");
     fillSelect(el.subscription, subscriptions, "Choose a subscription", "subscriptionId", "displayName");
     setStatus(subscriptions.length ? "Signed in. Choose where to install the runner." : "No enabled Azure subscriptions are available to this account.", subscriptions.length ? "success" : "error");
   }
 
-  async function loadResourceGroups() {
+  async function loadResourceGroups(operation = "loadResourceGroups") {
     const subscriptionId = el.subscription.value;
     fillSelect(el["resource-group"], [], subscriptionId ? "Loading…" : "Choose a subscription", "name", "name");
     refreshControls();
     if (!subscriptionId) return;
-    const result = await arm(`/subscriptions/${encodeURIComponent(subscriptionId)}/resourcegroups?api-version=${apiVersions.resources}`);
+    const result = await arm(`/subscriptions/${encodeURIComponent(subscriptionId)}/resourcegroups?api-version=${apiVersions.resources}`, {}, operation);
     fillSelect(el["resource-group"], result.value || [], "Choose a resource group", "name", "name");
     refreshControls();
   }
@@ -149,6 +204,8 @@
       const resourceGroup = el["resource-group"].value;
       const automationAccountName = el["automation-name"].value.trim();
       if (!/^[a-zA-Z][a-zA-Z0-9-]{5,49}$/.test(automationAccountName)) throw new Error("Automation account name must start with a letter and contain 6–50 letters, numbers, or hyphens.");
+      await token([ARM_SCOPE], "install");
+      await token(GRAPH_SCOPES, "install");
       setStatus("Registering the Microsoft.Automation resource provider…");
       await arm(`/subscriptions/${encodeURIComponent(subscriptionId)}/providers/Microsoft.Automation/register?api-version=${apiVersions.resources}`, { method: "POST" });
       setStatus("Loading the runner template…");
@@ -179,6 +236,7 @@
     if (!runner || runner.tenantId !== account.tenantId) throw new Error("Install the runner in this tenant first.");
     setBusy(true);
     try {
+      await token([ARM_SCOPE], "runLab");
       const jobId = crypto.randomUUID();
       const path = `/subscriptions/${encodeURIComponent(runner.subscriptionId)}/resourcegroups/${encodeURIComponent(runner.resourceGroup)}/providers/Microsoft.Automation/automationAccounts/${encodeURIComponent(runner.automationAccountName)}/jobs/${jobId}?api-version=${apiVersions.automation}`;
       setStatus("Starting the existing Automation runbook…");
@@ -195,7 +253,36 @@
     el.account.textContent = `${account.name || account.username} (${account.tenantId})`;
     if (!el["automation-name"].value) el["automation-name"].value = `after-party-${account.tenantId.slice(0, 8)}-${Math.random().toString(36).slice(2, 7)}`;
     refreshControls();
-    await loadSubscriptions();
+    setAuthorizationSummary();
+  }
+
+  async function resumePendingOperation(pending) {
+    restoreForm(pending.form);
+    switch (pending.operation) {
+      case "loadSubscriptions":
+        await loadSubscriptions();
+        return;
+      case "loadResourceGroups":
+        await loadSubscriptions();
+        el.subscription.value = pending.form.subscriptionId || "";
+        await loadResourceGroups();
+        if (pending.form.resourceGroup) el["resource-group"].value = pending.form.resourceGroup;
+        refreshControls();
+        return;
+      case "install":
+        await loadSubscriptions();
+        el.subscription.value = pending.form.subscriptionId || "";
+        await loadResourceGroups();
+        el["resource-group"].value = pending.form.resourceGroup || "";
+        refreshControls();
+        await installRunner();
+        return;
+      case "runLab":
+        await runLab();
+        return;
+      default:
+        setStatus("Signed in. Choose an action to authorize and continue.", "success");
+    }
   }
 
   async function initialize() {
@@ -211,18 +298,39 @@
     if (typeof msalClient.initialize === "function") await msalClient.initialize();
     const redirectResult = await msalClient.handleRedirectPromise();
     const cachedAccount = redirectResult?.account || msalClient.getAllAccounts()[0];
-    if (cachedAccount) await signedIn(cachedAccount); else setStatus("Ready to sign in.");
+    if (cachedAccount) {
+      await signedIn(cachedAccount);
+      const pending = takePendingOperation();
+      if (pending && redirectResult) await resumePendingOperation(pending);
+      else setStatus("Signed in. Choose an Azure action when you are ready to authorize it.", "success");
+    } else {
+      takePendingOperation();
+      setStatus("Ready to sign in.");
+    }
   }
 
-  el["sign-in"].addEventListener("click", async () => {
-    try { const result = await msalClient.loginPopup({ scopes: ["openid", "profile"] }); await signedIn(result.account); } catch (error) { setStatus(explainError(error), "error"); }
+  async function handleAction(action) {
+    try {
+      await action();
+    } catch (error) {
+      if (error !== redirecting) setStatus(explainError(error), "error");
+    }
+  }
+
+  el["sign-in"].addEventListener("click", () => handleAction(async () => {
+    setStatus("Redirecting to Microsoft to sign in…");
+    await msalClient.loginRedirect({ scopes: ["openid", "profile"] });
+  }));
+  el["sign-out"].addEventListener("click", () => {
+    sessionStorage.removeItem(PENDING_OPERATION_KEY);
+    return msalClient.logoutRedirect({ account });
   });
-  el["sign-out"].addEventListener("click", () => msalClient.logoutPopup({ account }));
-  el.subscription.addEventListener("change", () => loadResourceGroups().catch(error => setStatus(explainError(error), "error")));
+  el["authorize-azure"].addEventListener("click", () => handleAction(() => loadSubscriptions()));
+  el.subscription.addEventListener("change", () => handleAction(() => loadResourceGroups()));
   el["resource-group"].addEventListener("change", refreshControls);
   el.location.addEventListener("input", refreshControls);
   el["automation-name"].addEventListener("input", refreshControls);
-  el.install.addEventListener("click", () => installRunner().catch(error => setStatus(explainError(error), "error")));
-  el.run.addEventListener("click", () => runLab().catch(error => setStatus(explainError(error), "error")));
+  el.install.addEventListener("click", () => handleAction(installRunner));
+  el.run.addEventListener("click", () => handleAction(runLab));
   initialize().catch(error => setStatus(explainError(error), "error"));
 })();
