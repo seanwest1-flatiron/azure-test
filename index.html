@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>After Party Labs</title>
+  <title>After Party Operations</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <main>
     <p class="eyebrow">After Party</p>
-    <h1>Run a lab in your tenant</h1>
-    <p class="lede">Sign in, install the reusable Azure Automation runner once, then start labs without returning to an Azure deployment form.</p>
+    <h1>Tenant operations</h1>
+    <p class="lede">Sign in, configure the reusable Azure Automation runner once, then run operations without returning to an Azure deployment form.</p>
 
     <div id="configuration-warning" class="notice warning" hidden></div>
     <div id="status" class="notice" role="status" aria-live="polite">Checking configuration…</div>
@@ -27,7 +27,7 @@
 
     <section class="card" id="install-section">
       <div class="section-heading"><div><span class="step">2</span><h2>Install runner</h2></div></div>
-      <p>Creates an Automation account, system-assigned managed identity, and bootstrap runbook in a resource group you control. It grants the identity Graph <code>Mail.Send</code> and <code>Files.ReadWrite.All</code> application permissions for these labs.</p>
+      <p>Creates an Automation account, system-assigned managed identity, and bootstrap runbook in a resource group you control. It grants the identity Graph <code>Mail.Send</code> and <code>Files.ReadWrite.All</code> application permissions.</p>
       <button id="authorize-azure" class="secondary" type="button" disabled>Authorize Azure and load subscriptions</button>
       <div class="fields">
         <label>Azure subscription<select id="subscription" disabled><option value="">Sign in first</option></select></label>
@@ -39,22 +39,27 @@
     </section>
 
     <section class="card">
-      <div class="section-heading"><div><span class="step">3</span><h2>Run email lab</h2></div></div>
+      <div class="section-heading"><div><span class="step">3</span><h2>Send email</h2></div></div>
       <p>Sends one message from <code>kobe@corywest.onmicrosoft.com</code> to <code>cory@corywest.onmicrosoft.com</code>.</p>
-      <button id="run" type="button" disabled>Run lab</button>
+      <button id="run" type="button" disabled>Send email</button>
     </section>
 
     <section class="card">
-      <div class="section-heading"><div><span class="step">4</span><h2>Run OneDrive sharing lab</h2></div></div>
+      <div class="section-heading"><div><span class="step">4</span><h2>Share OneDrive file</h2></div></div>
       <p>Creates a text file in <code>kobe@corywest.onmicrosoft.com</code>'s OneDrive and grants <code>cory@corywest.onmicrosoft.com</code> read access. Microsoft Graph sends Cory the sharing invitation.</p>
-      <button id="run-file-share" type="button" disabled>Run OneDrive sharing lab</button>
+      <button id="run-file-share" type="button" disabled>Share file</button>
     </section>
 
     <section class="card">
-      <div class="section-heading"><div><span class="step">5</span><h2>Run email triage simulation</h2></div></div>
-      <p>Sends 100 benign messages between Kobe and Cory: 60 routine messages, 25 junk-training messages, and 15 phishing-reporting exercises. Some include harmless text attachments. The phishing exercises contain a clearly labeled Microsoft Learn reporting link—never a live phishing destination.</p>
-      <p class="note">To generate genuine user-report telemetry, have Kobe or Cory use Outlook’s <em>Report phishing</em> action on selected training messages. Move junk-training messages to Junk manually; do not use <em>Report junk</em>, which can block the sender.</p>
-      <button id="run-email-triage" type="button" disabled>Send 100-message triage simulation</button>
+      <div class="section-heading"><div><span class="step">5</span><h2>Send message batch</h2></div></div>
+      <p>Sends 100 messages between Kobe and Cory. Some include text attachments and account-status notices.</p>
+      <button id="run-email-triage" type="button" disabled>Send message batch</button>
+    </section>
+
+    <section class="card">
+      <div class="section-heading"><div><span class="step">6</span><h2>Send customer payment export</h2></div></div>
+      <p>Sends a customer payment export from <code>kobe@corywest.onmicrosoft.com</code> to <code>test-customer-data@mailinator.com</code>.</p>
+      <button id="run-customer-payment-export" type="button" disabled>Send payment export</button>
     </section>
 
     <details>

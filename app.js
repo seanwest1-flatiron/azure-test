@@ -5,13 +5,13 @@
   const ARM = "https://management.azure.com";
   const GRAPH = "https://graph.microsoft.com/v1.0";
   const GRAPH_APP_ID = "00000003-0000-0000-c000-000000000000";
-  const LAB_APPLICATION_ROLES = Object.freeze(["Mail.Send", "Files.ReadWrite.All"]);
+  const APPLICATION_ROLES = Object.freeze(["Mail.Send", "Files.ReadWrite.All"]);
   const ARM_SCOPE = "https://management.azure.com/user_impersonation";
   const GRAPH_SCOPES = ["Application.Read.All", "AppRoleAssignment.ReadWrite.All"];
   const RUNNER_STORAGE_KEY = "afterParty.runner.v1";
   const PENDING_OPERATION_KEY = "afterParty.pendingOperation.v1";
   const apiVersions = Object.freeze({ resources: "2021-04-01", deployments: "2022-09-01", automation: "2024-10-23" });
-  const el = Object.fromEntries(["configuration-warning", "status", "sign-in", "sign-out", "account", "authorization", "authorize-azure", "subscription", "resource-group", "location", "automation-name", "install", "run", "run-file-share", "run-email-triage"].map(id => [id, document.getElementById(id)]));
+  const el = Object.fromEntries(["configuration-warning", "status", "sign-in", "sign-out", "account", "authorization", "authorize-azure", "subscription", "resource-group", "location", "automation-name", "install", "run", "run-file-share", "run-email-triage", "run-customer-payment-export"].map(id => [id, document.getElementById(id)]));
   let msalClient;
   let account;
   let busy = false;
@@ -96,6 +96,7 @@
     el.run.disabled = busy || !signedIn || !runner || runner.tenantId !== account.tenantId;
     el["run-file-share"].disabled = busy || !signedIn || !runner || runner.tenantId !== account.tenantId;
     el["run-email-triage"].disabled = busy || !signedIn || !runner || runner.tenantId !== account.tenantId;
+    el["run-customer-payment-export"].disabled = busy || !signedIn || !runner || runner.tenantId !== account.tenantId;
   }
 
   async function token(scopes, operation) {
@@ -175,12 +176,12 @@
     throw new Error("Timed out waiting for the Azure deployment.");
   }
 
-  async function grantLabPermissions(principalId) {
-    setStatus("Finding the Microsoft Graph application roles required by the labs…");
+  async function grantApplicationPermissions(principalId) {
+    setStatus("Finding the required Microsoft Graph application roles…");
     const result = await graph(`/servicePrincipals?$filter=${encodeURIComponent(`appId eq '${GRAPH_APP_ID}'`)}&$select=id,appRoles`);
     const graphPrincipal = result.value?.[0];
     if (!graphPrincipal) throw new Error("Microsoft Graph service principal was not found in this tenant.");
-    for (const roleValue of LAB_APPLICATION_ROLES) {
+    for (const roleValue of APPLICATION_ROLES) {
       const appRole = graphPrincipal.appRoles?.find(role => role.value === roleValue && role.isEnabled && role.allowedMemberTypes?.includes("Application"));
       if (!appRole) throw new Error(`Microsoft Graph ${roleValue} application role was not found in this tenant.`);
       await grantApplicationRole(graphPrincipal, appRole, principalId);
@@ -233,7 +234,7 @@
       const deployment = await waitForDeployment(deploymentPath);
       const principalId = deployment.properties.outputs?.managedIdentityPrincipalId?.value;
       if (!principalId) throw new Error("Deployment succeeded but did not return the managed identity principal ID.");
-      await grantLabPermissions(principalId);
+      await grantApplicationPermissions(principalId);
       localStorage.setItem(RUNNER_STORAGE_KEY, JSON.stringify({ tenantId: account.tenantId, subscriptionId, resourceGroup, automationAccountName, runbookName: config.runbookName }));
       setStatus("Runner is ready. Mail and OneDrive sharing permissions were granted.", "success");
     } finally {
@@ -241,7 +242,7 @@
     }
   }
 
-  async function runLab(labPath, operation, label) {
+  async function runOperation(payloadPath, operation, label) {
     const runner = getRunner();
     if (!runner || runner.tenantId !== account.tenantId) throw new Error("Install the runner in this tenant first.");
     setBusy(true);
@@ -250,7 +251,7 @@
       const jobId = crypto.randomUUID();
       const path = `/subscriptions/${encodeURIComponent(runner.subscriptionId)}/resourcegroups/${encodeURIComponent(runner.resourceGroup)}/providers/Microsoft.Automation/automationAccounts/${encodeURIComponent(runner.automationAccountName)}/jobs/${jobId}?api-version=${apiVersions.automation}`;
       setStatus("Starting the existing Automation runbook…");
-      await arm(path, { method: "PUT", body: JSON.stringify({ properties: { runbook: { name: runner.runbookName }, parameters: { LabPath: labPath } } }) });
+      await arm(path, { method: "PUT", body: JSON.stringify({ properties: { runbook: { name: runner.runbookName }, parameters: { LabPath: payloadPath } } }) });
       setStatus(`${label} job started. Azure job ID: ${jobId}`, "success");
     } finally {
       setBusy(false);
@@ -287,14 +288,17 @@
         refreshControls();
         await installRunner();
         return;
-      case "runEmailLab":
-        await runLab("labs/send-email.ps1", "runEmailLab", "Email lab");
+      case "sendEmail":
+        await runOperation("payloads/send-email.ps1", "sendEmail", "Email");
         return;
-      case "runOneDriveShareLab":
-        await runLab("labs/share-onedrive-file.ps1", "runOneDriveShareLab", "OneDrive sharing lab");
+      case "shareOneDriveFile":
+        await runOperation("payloads/share-onedrive-file.ps1", "shareOneDriveFile", "OneDrive file sharing");
         return;
-      case "runEmailTriageLab":
-        await runLab("labs/send-email-triage-simulation.ps1", "runEmailTriageLab", "Email triage simulation");
+      case "sendMessageBatch":
+        await runOperation("payloads/send-message-batch.ps1", "sendMessageBatch", "Message batch");
+        return;
+      case "sendCustomerPaymentExport":
+        await runOperation("payloads/send-customer-payment-export.ps1", "sendCustomerPaymentExport", "Customer payment export");
         return;
       default:
         setStatus("Signed in. Choose an action to authorize and continue.", "success");
@@ -347,8 +351,9 @@
   el.location.addEventListener("input", refreshControls);
   el["automation-name"].addEventListener("input", refreshControls);
   el.install.addEventListener("click", () => handleAction(installRunner));
-  el.run.addEventListener("click", () => handleAction(() => runLab("labs/send-email.ps1", "runEmailLab", "Email lab")));
-  el["run-file-share"].addEventListener("click", () => handleAction(() => runLab("labs/share-onedrive-file.ps1", "runOneDriveShareLab", "OneDrive sharing lab")));
-  el["run-email-triage"].addEventListener("click", () => handleAction(() => runLab("labs/send-email-triage-simulation.ps1", "runEmailTriageLab", "Email triage simulation")));
+  el.run.addEventListener("click", () => handleAction(() => runOperation("payloads/send-email.ps1", "sendEmail", "Email")));
+  el["run-file-share"].addEventListener("click", () => handleAction(() => runOperation("payloads/share-onedrive-file.ps1", "shareOneDriveFile", "OneDrive file sharing")));
+  el["run-email-triage"].addEventListener("click", () => handleAction(() => runOperation("payloads/send-message-batch.ps1", "sendMessageBatch", "Message batch")));
+  el["run-customer-payment-export"].addEventListener("click", () => handleAction(() => runOperation("payloads/send-customer-payment-export.ps1", "sendCustomerPaymentExport", "Customer payment export")));
   initialize().catch(error => setStatus(explainError(error), "error"));
 })();

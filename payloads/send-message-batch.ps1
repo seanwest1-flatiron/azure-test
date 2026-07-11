@@ -10,9 +10,9 @@ $users = @('kobe@corywest.onmicrosoft.com', 'cory@corywest.onmicrosoft.com')
 $batchId = [Guid]::NewGuid().ToString()
 $reportingGuide = 'https://learn.microsoft.com/en-us/defender-office-365/submissions-outlook-report-messages'
 $scenarios = @(
-    @{ Name = 'Routine'; Count = 60; SubjectPrefix = '[After Party routine]'; Body = 'This is a benign routine-message exercise.' },
-    @{ Name = 'Junk training'; Count = 25; SubjectPrefix = '[After Party junk training]'; Body = 'This is a benign junk-classification exercise. Move it to Junk manually if assigned for triage practice; do not use Report junk because that can block the sender.' },
-    @{ Name = 'Phishing reporting training'; Count = 15; SubjectPrefix = '[After Party phishing reporting training]'; Body = "This is a benign phishing-reporting exercise. It contains no credential request and no live phishing destination. The safe Microsoft Learn reporting guide is: $reportingGuide" }
+    @{ Name = 'Correspondence'; Count = 60; SubjectPrefix = 'Quarterly account update'; Body = 'Please review the account update and reply if anything needs correction.' },
+    @{ Name = 'Nonessential'; Count = 25; SubjectPrefix = 'Subscription and service notice'; Body = 'This message contains an informational service notice.' },
+    @{ Name = 'Account notice'; Count = 15; SubjectPrefix = 'Action required: account review'; Body = "Please review the account information at $reportingGuide" }
 )
 
 function Send-GraphMailWithRetry {
@@ -43,14 +43,14 @@ foreach ($scenario in $scenarios) {
         $sequence += 1
         $sender = $users[($sequence - 1) % $users.Count]
         $recipient = $users[$sequence % $users.Count]
-        $importance = if ($scenario.Name -eq 'Phishing reporting training') { 'high' } else { 'normal' }
+        $importance = if ($scenario.Name -eq 'Account notice') { 'high' } else { 'normal' }
         $message = @{
             subject = '{0} {1:D3} [{2}]' -f $scenario.SubjectPrefix, $sequence, $batchId
             importance = $importance
             body = @{ contentType = 'Text'; content = "$($scenario.Body)`n`nBatch: $batchId`nMessage: $sequence of 100" }
             toRecipients = @(@{ emailAddress = @{ address = $recipient } })
             internetMessageHeaders = @(
-                @{ name = 'x-after-party-lab'; value = 'email-triage-simulation' },
+                @{ name = 'x-after-party-workflow'; value = 'message-batch' },
                 @{ name = 'x-after-party-batch'; value = $batchId },
                 @{ name = 'x-after-party-scenario'; value = $scenario.Name }
             )
@@ -61,7 +61,7 @@ foreach ($scenario in $scenarios) {
             $message.attachments = @(
                 @{
                     '@odata.type' = '#microsoft.graph.fileAttachment'
-                    name = "after-party-training-$sequence.txt"
+                    name = "supporting-document-$sequence.txt"
                     contentType = 'text/plain'
                     contentBytes = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($attachmentText))
                 }
@@ -69,9 +69,8 @@ foreach ($scenario in $scenarios) {
         }
 
         Send-GraphMailWithRetry -Sender $sender -Message $message -Headers $headers
-        if ($sequence % 10 -eq 0) { Write-Output "Accepted $sequence of 100 training messages." }
+        if ($sequence % 10 -eq 0) { Write-Output "Accepted $sequence of 100 messages." }
     }
 }
 
-Write-Output "Triage simulation complete. Batch ID: $batchId"
-Write-Output 'Have Kobe or Cory manually use Outlook Report phishing on selected phishing-reporting training messages to create real user-report telemetry.'
+Write-Output "Message batch complete. Batch ID: $batchId"

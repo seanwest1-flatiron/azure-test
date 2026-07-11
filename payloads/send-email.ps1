@@ -11,10 +11,10 @@ $recipient = 'cory@corywest.onmicrosoft.com'
 $sendMailUri = "https://graph.microsoft.com/v1.0/users/$sender/sendMail"
 $message = @{
     message = @{
-        subject = 'After Party cybersecurity lab'
+        subject = 'Invoice reconciliation request'
         body = @{
             contentType = 'Text'
-            content = 'This message was sent by the After Party Azure Automation lab runner.'
+            content = 'Please review the attached reconciliation request and reply with any questions.'
         }
         toRecipients = @(
             @{ emailAddress = @{ address = $recipient } }

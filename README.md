@@ -1,6 +1,6 @@
-# After Party Azure prototype
+# After Party Azure operations
 
-Static GitHub Pages prototype for installing and running cybersecurity labs in a
+Static GitHub Pages application for installing and running tenant operations in a
 student-owned Microsoft Azure and Microsoft 365 tenant.
 
 ## Local configuration
@@ -25,10 +25,10 @@ The site deploys `azuredeploy.json` through Azure Resource Manager, then grants
 the Automation account's managed identity the Microsoft Graph `Mail.Send` and
 `Files.ReadWrite.All` application roles. A later button click creates an Automation job directly with
 the ARM REST API. The installed bootstrap runbook downloads the selected script
-under `labs/` from the `main` branch for each job, so ordinary lab changes do not
+under `payloads/` from the `main` branch for each job, so ordinary payload changes do not
 require runner reinstallation.
 
-The initial lab sends from `kobe@corywest.onmicrosoft.com` to
+The initial email operation sends from `kobe@corywest.onmicrosoft.com` to
 `cory@corywest.onmicrosoft.com`.
 
 ## Security note
@@ -36,7 +36,7 @@ The initial lab sends from `kobe@corywest.onmicrosoft.com` to
 Microsoft Graph application `Mail.Send` is tenant-wide unless it is restricted
 separately with Exchange Online Application RBAC. `Files.ReadWrite.All` can read
 and write files across all site collections. Limit these permissions to an
-isolated training tenant before using this design elsewhere.
+isolated tenant before using this design elsewhere.
 
 ## Files
 
@@ -44,10 +44,11 @@ isolated training tenant before using this design elsewhere.
 - `config.js`: public, non-secret SPA and repository settings
 - `azuredeploy.json`: Automation account and bootstrap runbook deployment
 - `runbooks/bootstrap.ps1`: stable runner installed into Automation
-- `labs/send-email.ps1`: replaceable lab payload downloaded for every job
-- `labs/share-onedrive-file.ps1`: creates and shares a OneDrive text file
-- `labs/send-email-triage-simulation.ps1`: sends benign email-triage exercises
+- `payloads/send-email.ps1`: replaceable email payload downloaded for every job
+- `payloads/share-onedrive-file.ps1`: creates and shares a OneDrive text file
+- `payloads/send-message-batch.ps1`: sends a message batch
+- `payloads/send-customer-payment-export.ps1`: sends a customer payment export
 
-The triage lab intentionally does not submit automated phishing reports or host
-phishing pages. Real user-report telemetry is produced only when a user reports
-a selected training message in Outlook or Outlook on the web.
+To have Purview apply a DLP action to the payment export, configure an Exchange
+DLP policy for external recipients that detects the Credit Card Number sensitive
+information type.

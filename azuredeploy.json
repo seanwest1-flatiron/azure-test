@@ -14,7 +14,7 @@
       "minLength": 6,
       "maxLength": 50,
       "metadata": {
-        "description": "Globally unique name for the reusable lab Automation account."
+        "description": "Globally unique name for the reusable Automation account."
       }
     },
     "bootstrapUri": {
@@ -48,7 +48,7 @@
         "[resourceId('Microsoft.Automation/automationAccounts', parameters('automationAccountName'))]"
       ],
       "properties": {
-        "description": "Downloads the current After Party lab payload for every job.",
+        "description": "Downloads the current After Party payload for every job.",
         "logProgress": false,
         "logVerbose": true,
         "runbookType": "PowerShell",

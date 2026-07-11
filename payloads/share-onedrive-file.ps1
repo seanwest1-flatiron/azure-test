@@ -9,7 +9,7 @@ $ErrorActionPreference = 'Stop'
 $owner = 'kobe@corywest.onmicrosoft.com'
 $recipient = 'cory@corywest.onmicrosoft.com'
 $fileName = 'AfterParty-OneDrive-Share-{0}.txt' -f (Get-Date -Format 'yyyyMMdd-HHmmss')
-$fileContent = "After Party OneDrive sharing lab created this file at $(Get-Date -Format o)."
+$fileContent = "Shared file created at $(Get-Date -Format o)."
 $ownerPath = [Uri]::EscapeDataString($owner)
 $uploadUri = 'https://graph.microsoft.com/v1.0/users/{0}/drive/root:/{1}:/content' -f $ownerPath, $fileName
 $headers = @{ Authorization = "Bearer $GraphAccessToken" }
@@ -31,7 +31,7 @@ $invitation = @{
     recipients = @(
         @{ email = $recipient }
     )
-    message = 'After Party lab: this text file was shared with you from Kobe''s OneDrive.'
+    message = 'Please review the shared file and let me know if any updates are needed.'
     requireSignIn = $true
     sendInvitation = $true
     roles = @('read')
