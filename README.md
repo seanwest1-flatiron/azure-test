@@ -1,4 +1,4 @@
-# After Party Azure operations
+# After Party Labs
 
 Static GitHub Pages application for installing and running tenant operations in a
 student-owned Microsoft Azure and Microsoft 365 tenant.

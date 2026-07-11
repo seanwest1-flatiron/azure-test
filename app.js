@@ -8,13 +8,18 @@
   const APPLICATION_ROLES = Object.freeze(["Mail.Send", "Files.ReadWrite.All"]);
   const ARM_SCOPE = "https://management.azure.com/user_impersonation";
   const GRAPH_SCOPES = ["Application.Read.All", "AppRoleAssignment.ReadWrite.All"];
-  const RUNNER_STORAGE_KEY = "afterParty.runner.v1";
+  const RUNNER_STORAGE_KEY = "afterParty.runner.v2";
   const PENDING_OPERATION_KEY = "afterParty.pendingOperation.v1";
   const apiVersions = Object.freeze({ resources: "2021-04-01", deployments: "2022-09-01", automation: "2024-10-23" });
-  const el = Object.fromEntries(["configuration-warning", "status", "sign-in", "sign-out", "account", "authorization", "authorize-azure", "subscription", "resource-group", "location", "automation-name", "install", "run", "run-file-share", "run-email-triage", "run-customer-payment-export"].map(id => [id, document.getElementById(id)]));
+  const el = Object.fromEntries([
+    "configuration-warning", "status", "sign-in", "sign-out", "account", "authorization", "authorize-azure",
+    "subscription", "resource-group", "environment-status", "install", "run", "run-file-share", "run-email-triage",
+    "run-customer-payment-export", "email-job-status", "file-share-job-status", "message-batch-job-status", "payment-export-job-status"
+  ].map(id => [id, document.getElementById(id)]));
   let msalClient;
   let account;
   let busy = false;
+  let activeRunner = null;
   const authorization = { arm: false, graph: false };
   const redirecting = Symbol("redirecting");
 
@@ -33,6 +38,22 @@
     refreshControls();
   }
 
+  function setEnvironment(message, kind = "") {
+    el["environment-status"].textContent = message;
+    el["environment-status"].className = `environment-status ${kind}`.trim();
+  }
+
+  function setJobStatus(element, message, kind = "", output = "") {
+    element.hidden = false;
+    element.className = `job-status ${kind}`.trim();
+    element.replaceChildren(document.createTextNode(message));
+    if (output) {
+      const pre = document.createElement("pre");
+      pre.textContent = output.length > 4000 ? `${output.slice(-4000)}\n…output truncated` : output;
+      element.append(pre);
+    }
+  }
+
   function setAuthorizationSummary() {
     if (!account) {
       el.authorization.textContent = "Azure and Microsoft Graph access has not been authorized for an operation yet.";
@@ -44,12 +65,7 @@
   }
 
   function formSnapshot() {
-    return {
-      subscriptionId: el.subscription.value,
-      resourceGroup: el["resource-group"].value,
-      location: el.location.value,
-      automationAccountName: el["automation-name"].value
-    };
+    return { subscriptionId: el.subscription.value, resourceGroup: el["resource-group"].value };
   }
 
   function savePendingOperation(operation) {
@@ -67,36 +83,42 @@
     }
   }
 
-  function restoreForm(snapshot = {}) {
-    el.location.value = snapshot.location || el.location.value;
-    el["automation-name"].value = snapshot.automationAccountName || el["automation-name"].value;
+  function getStoredRunner() {
+    try { return JSON.parse(localStorage.getItem(RUNNER_STORAGE_KEY)); } catch { return null; }
+  }
+
+  function currentRunner() {
+    if (activeRunner?.tenantId === account?.tenantId) return activeRunner;
+    const stored = getStoredRunner();
+    if (stored?.tenantId === account?.tenantId && stored.subscriptionId === el.subscription.value && stored.resourceGroup === el["resource-group"].value) return stored;
+    return null;
+  }
+
+  function storeRunner(runner) {
+    activeRunner = runner;
+    localStorage.setItem(RUNNER_STORAGE_KEY, JSON.stringify(runner));
+  }
+
+  function refreshControls() {
+    const signedIn = Boolean(account);
+    const environmentSelected = Boolean(el.subscription.value && el["resource-group"].value);
+    const ready = Boolean(currentRunner());
+    el["sign-in"].hidden = signedIn;
+    el["sign-out"].hidden = !signedIn;
+    el["authorize-azure"].disabled = busy || !signedIn;
+    el.subscription.disabled = busy || !signedIn;
+    el["resource-group"].disabled = busy || !signedIn || !el.subscription.value;
+    el.install.disabled = busy || !signedIn || !environmentSelected;
+    el.install.textContent = ready ? "Update environment" : "Set up environment";
+    [el.run, el["run-file-share"], el["run-email-triage"], el["run-customer-payment-export"]].forEach(button => {
+      button.disabled = busy || !signedIn || !ready;
+    });
   }
 
   function noteAuthorized(scopes) {
     if (scopes.includes(ARM_SCOPE)) authorization.arm = true;
     if (scopes.some(scope => GRAPH_SCOPES.includes(scope))) authorization.graph = true;
     setAuthorizationSummary();
-  }
-
-  function getRunner() {
-    try { return JSON.parse(localStorage.getItem(RUNNER_STORAGE_KEY)); } catch { return null; }
-  }
-
-  function refreshControls() {
-    const signedIn = Boolean(account);
-    el["sign-in"].hidden = signedIn;
-    el["sign-out"].hidden = !signedIn;
-    el["authorize-azure"].disabled = busy || !signedIn;
-    el.subscription.disabled = busy || !signedIn;
-    el["resource-group"].disabled = busy || !signedIn || !el.subscription.value;
-    el.location.disabled = busy || !signedIn;
-    el["automation-name"].disabled = busy || !signedIn;
-    el.install.disabled = busy || !signedIn || !el.subscription.value || !el["resource-group"].value || !el.location.value.trim() || !el["automation-name"].value.trim();
-    const runner = getRunner();
-    el.run.disabled = busy || !signedIn || !runner || runner.tenantId !== account.tenantId;
-    el["run-file-share"].disabled = busy || !signedIn || !runner || runner.tenantId !== account.tenantId;
-    el["run-email-triage"].disabled = busy || !signedIn || !runner || runner.tenantId !== account.tenantId;
-    el["run-customer-payment-export"].disabled = busy || !signedIn || !runner || runner.tenantId !== account.tenantId;
   }
 
   async function token(scopes, operation) {
@@ -138,6 +160,13 @@
     return requestJson(`${ARM}${path}`, options, await token([ARM_SCOPE], operation));
   }
 
+  async function armText(path) {
+    const response = await fetch(`${ARM}${path}`, { headers: { Authorization: `Bearer ${await token([ARM_SCOPE])}` } });
+    const text = await response.text();
+    if (!response.ok) throw new Error(text || `${response.status} ${response.statusText}`);
+    return text.trim().replace(/^"|"$/g, "");
+  }
+
   async function graph(path, options = {}, operation) {
     return requestJson(`${GRAPH}${path}`, options, await token(GRAPH_SCOPES, operation));
   }
@@ -146,21 +175,78 @@
     select.replaceChildren(new Option(placeholder, ""), ...items.map(item => new Option(item[labelKey], item[valueKey])));
   }
 
+  function runnerName() {
+    return `after-party-${account.tenantId}`;
+  }
+
+  function accountPath(subscriptionId, resourceGroup, automationAccountName) {
+    return `/subscriptions/${encodeURIComponent(subscriptionId)}/resourcegroups/${encodeURIComponent(resourceGroup)}/providers/Microsoft.Automation/automationAccounts/${encodeURIComponent(automationAccountName)}`;
+  }
+
+  function automationAccountsPath(subscriptionId, resourceGroup) {
+    return `/subscriptions/${encodeURIComponent(subscriptionId)}/resourcegroups/${encodeURIComponent(resourceGroup)}/providers/Microsoft.Automation/automationAccounts`;
+  }
+
   async function loadSubscriptions(operation = "loadSubscriptions") {
     setStatus("Loading Azure subscriptions…");
     const result = await arm(`/subscriptions?api-version=${apiVersions.resources}`, {}, operation);
     const subscriptions = (result.value || []).filter(item => item.state === "Enabled");
     fillSelect(el.subscription, subscriptions, "Choose a subscription", "subscriptionId", "displayName");
-    setStatus(subscriptions.length ? "Signed in. Choose where to install the runner." : "No enabled Azure subscriptions are available to this account.", subscriptions.length ? "success" : "error");
+    if (subscriptions.length === 1) {
+      el.subscription.value = subscriptions[0].subscriptionId;
+      await loadResourceGroups();
+      return;
+    }
+    setStatus(subscriptions.length ? "Choose the subscription for this environment." : "No enabled Azure subscriptions are available to this account.", subscriptions.length ? "success" : "error");
   }
 
   async function loadResourceGroups(operation = "loadResourceGroups") {
     const subscriptionId = el.subscription.value;
+    activeRunner = null;
     fillSelect(el["resource-group"], [], subscriptionId ? "Loading…" : "Choose a subscription", "name", "name");
+    setEnvironment("Choose a resource group to check the environment.");
     refreshControls();
     if (!subscriptionId) return;
     const result = await arm(`/subscriptions/${encodeURIComponent(subscriptionId)}/resourcegroups?api-version=${apiVersions.resources}`, {}, operation);
-    fillSelect(el["resource-group"], result.value || [], "Choose a resource group", "name", "name");
+    const groups = result.value || [];
+    fillSelect(el["resource-group"], groups, "Choose a resource group", "name", "name");
+    if (groups.length === 1) {
+      el["resource-group"].value = groups[0].name;
+      await discoverRunner();
+      return;
+    }
+    refreshControls();
+  }
+
+  async function discoverRunner(operation = "discoverRunner") {
+    const subscriptionId = el.subscription.value;
+    const resourceGroup = el["resource-group"].value;
+    activeRunner = null;
+    if (!subscriptionId || !resourceGroup) {
+      setEnvironment("Choose a resource group to check the environment.");
+      refreshControls();
+      return;
+    }
+    setEnvironment("Checking for an existing After Party environment…");
+    refreshControls();
+    const listPath = `${automationAccountsPath(subscriptionId, resourceGroup)}?api-version=${apiVersions.automation}`;
+    const accounts = (await arm(listPath, {}, operation)).value || [];
+    const candidates = accounts
+      .filter(item => item.tags?.["after-party-runner"] === "true" || /^after-party-/i.test(item.name))
+      .sort((left, right) => Number(right.tags?.["after-party-runner"] === "true") - Number(left.tags?.["after-party-runner"] === "true"));
+    for (const candidate of candidates) {
+      try {
+        await arm(`${accountPath(subscriptionId, resourceGroup, candidate.name)}/runbooks/${encodeURIComponent(config.runbookName)}?api-version=${apiVersions.automation}`);
+        const runner = { tenantId: account.tenantId, subscriptionId, resourceGroup, automationAccountName: candidate.name, runbookName: config.runbookName };
+        storeRunner(runner);
+        setEnvironment(`Ready — using the existing After Party Automation account “${candidate.name}”. No setup is required when you return.`, "ready");
+        refreshControls();
+        return;
+      } catch (error) {
+        if (error.status !== 404) throw error;
+      }
+    }
+    setEnvironment("No After Party environment was found in this resource group. Set it up once to continue.");
     refreshControls();
   }
 
@@ -192,10 +278,7 @@
     setStatus(`Granting ${appRole.value} to the Automation managed identity…`);
     for (let attempt = 0; attempt < 30; attempt += 1) {
       try {
-        await graph(`/servicePrincipals/${graphPrincipal.id}/appRoleAssignedTo`, {
-          method: "POST",
-          body: JSON.stringify({ principalId, resourceId: graphPrincipal.id, appRoleId: appRole.id })
-        });
+        await graph(`/servicePrincipals/${graphPrincipal.id}/appRoleAssignedTo`, { method: "POST", body: JSON.stringify({ principalId, resourceId: graphPrincipal.id, appRoleId: appRole.id }) });
         return;
       } catch (error) {
         const message = explainError(error);
@@ -213,46 +296,84 @@
     try {
       const subscriptionId = el.subscription.value;
       const resourceGroup = el["resource-group"].value;
-      const automationAccountName = el["automation-name"].value.trim();
-      if (!/^[a-zA-Z][a-zA-Z0-9-]{5,49}$/.test(automationAccountName)) throw new Error("Automation account name must start with a letter and contain 6–50 letters, numbers, or hyphens.");
+      const automationAccountName = currentRunner()?.automationAccountName || runnerName();
       await token([ARM_SCOPE], "install");
       await token(GRAPH_SCOPES, "install");
-      setStatus("Registering the Microsoft.Automation resource provider…");
+      setStatus(`Configuring the After Party Automation account “${automationAccountName}”…`);
       await arm(`/subscriptions/${encodeURIComponent(subscriptionId)}/providers/Microsoft.Automation/register?api-version=${apiVersions.resources}`, { method: "POST" });
-      setStatus("Loading the runner template…");
       const template = await requestJson("azuredeploy.json", { cache: "no-store" });
       const deploymentName = `after-party-${Date.now()}`;
       const deploymentPath = `/subscriptions/${encodeURIComponent(subscriptionId)}/resourcegroups/${encodeURIComponent(resourceGroup)}/providers/Microsoft.Resources/deployments/${deploymentName}?api-version=${apiVersions.deployments}`;
-      await arm(deploymentPath, {
-        method: "PUT",
-        body: JSON.stringify({ properties: { mode: "Incremental", template, parameters: {
-          location: { value: el.location.value.trim() },
-          automationAccountName: { value: automationAccountName },
-          bootstrapUri: { value: `${config.repositoryRawBase}/runbooks/bootstrap.ps1` }
-        } } })
-      });
+      await arm(deploymentPath, { method: "PUT", body: JSON.stringify({ properties: { mode: "Incremental", template, parameters: {
+        automationAccountName: { value: automationAccountName },
+        bootstrapUri: { value: `${config.repositoryRawBase}/runbooks/bootstrap.ps1` }
+      } } }) });
       const deployment = await waitForDeployment(deploymentPath);
       const principalId = deployment.properties.outputs?.managedIdentityPrincipalId?.value;
       if (!principalId) throw new Error("Deployment succeeded but did not return the managed identity principal ID.");
       await grantApplicationPermissions(principalId);
-      localStorage.setItem(RUNNER_STORAGE_KEY, JSON.stringify({ tenantId: account.tenantId, subscriptionId, resourceGroup, automationAccountName, runbookName: config.runbookName }));
-      setStatus("Runner is ready. Mail and OneDrive sharing permissions were granted.", "success");
+      storeRunner({ tenantId: account.tenantId, subscriptionId, resourceGroup, automationAccountName, runbookName: config.runbookName });
+      setEnvironment(`Ready — using the After Party Automation account “${automationAccountName}”.`, "ready");
+      setStatus("Environment is ready.", "success");
     } finally {
       setBusy(false);
     }
   }
 
-  async function runOperation(payloadPath, operation, label) {
-    const runner = getRunner();
-    if (!runner || runner.tenantId !== account.tenantId) throw new Error("Install the runner in this tenant first.");
+  function jobState(status) {
+    if (["New", "Activating", "Queued"].includes(status)) return "Queued";
+    if (status === "Running") return "Running";
+    if (status === "Completed") return "Completed";
+    return status || "Queued";
+  }
+
+  async function getJobDetails(jobPath, job) {
+    const parts = [];
+    try {
+      const output = await armText(`${jobPath}/output?api-version=${apiVersions.automation}`);
+      if (output) parts.push(output);
+    } catch { /* Job output is not always available after a failed job. */ }
+    if (job.properties?.exception) parts.push(job.properties.exception);
+    try {
+      const streams = await arm(`${jobPath}/streams?api-version=${apiVersions.automation}`);
+      const errors = (streams.value || []).filter(stream => stream.properties?.streamType === "Error").map(stream => stream.properties.streamText || stream.properties.summary || String(stream.properties.value || "")).filter(Boolean);
+      if (errors.length) parts.push(errors.join("\n"));
+    } catch { /* The job status still supplies the primary failure message. */ }
+    return [...new Set(parts)].join("\n");
+  }
+
+  async function pollJob(jobPath, statusElement, label, jobId) {
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      const job = await arm(`${jobPath}?api-version=${apiVersions.automation}`);
+      const status = jobState(job.properties?.status);
+      if (status === "Completed") {
+        const output = await getJobDetails(jobPath, job);
+        setJobStatus(statusElement, `${label}: completed.`, "success", output || "The operation completed successfully.");
+        return;
+      }
+      if (["Failed", "Stopped", "Blocked", "Suspended", "Disconnected"].includes(status)) {
+        const output = await getJobDetails(jobPath, job);
+        const detail = output || job.properties?.statusDetails || "Azure Automation did not provide additional details.";
+        setJobStatus(statusElement, `${label}: ${status.toLowerCase()}.`, "error", detail);
+        return;
+      }
+      setJobStatus(statusElement, `${label}: ${status.toLowerCase()}… Job ID: ${jobId}`);
+      await new Promise(resolve => setTimeout(resolve, 3000));
+    }
+    setJobStatus(statusElement, `${label}: status refresh timed out. Check the Automation account if it is still running.`, "error");
+  }
+
+  async function runOperation(payloadPath, operation, label, statusElement) {
+    const runner = currentRunner();
+    if (!runner) throw new Error("Select a resource group with a ready After Party environment first.");
     setBusy(true);
     try {
       await token([ARM_SCOPE], operation);
       const jobId = crypto.randomUUID();
-      const path = `/subscriptions/${encodeURIComponent(runner.subscriptionId)}/resourcegroups/${encodeURIComponent(runner.resourceGroup)}/providers/Microsoft.Automation/automationAccounts/${encodeURIComponent(runner.automationAccountName)}/jobs/${jobId}?api-version=${apiVersions.automation}`;
-      setStatus("Starting the existing Automation runbook…");
-      await arm(path, { method: "PUT", body: JSON.stringify({ properties: { runbook: { name: runner.runbookName }, parameters: { LabPath: payloadPath } } }) });
-      setStatus(`${label} job started. Azure job ID: ${jobId}`, "success");
+      const jobPath = `${accountPath(runner.subscriptionId, runner.resourceGroup, runner.automationAccountName)}/jobs/${jobId}`;
+      setJobStatus(statusElement, `${label}: queued… Job ID: ${jobId}`);
+      await arm(`${jobPath}?api-version=${apiVersions.automation}`, { method: "PUT", body: JSON.stringify({ properties: { runbook: { name: runner.runbookName }, parameters: { LabPath: payloadPath } } }) });
+      void pollJob(jobPath, statusElement, label, jobId).catch(error => setJobStatus(statusElement, `${label}: unable to refresh status.`, "error", explainError(error)));
     } finally {
       setBusy(false);
     }
@@ -262,46 +383,41 @@
     account = nextAccount;
     msalClient.setActiveAccount(account);
     el.account.textContent = `${account.name || account.username} (${account.tenantId})`;
-    if (!el["automation-name"].value) el["automation-name"].value = `after-party-${account.tenantId.slice(0, 8)}-${Math.random().toString(36).slice(2, 7)}`;
     refreshControls();
     setAuthorizationSummary();
   }
 
+  async function restoreEnvironment(form = {}) {
+    await loadSubscriptions();
+    if (!form.subscriptionId) return;
+    el.subscription.value = form.subscriptionId;
+    await loadResourceGroups();
+    if (!form.resourceGroup) return;
+    el["resource-group"].value = form.resourceGroup;
+    await discoverRunner();
+  }
+
   async function resumePendingOperation(pending) {
-    restoreForm(pending.form);
+    await restoreEnvironment(pending.form);
     switch (pending.operation) {
       case "loadSubscriptions":
-        await loadSubscriptions();
-        return;
       case "loadResourceGroups":
-        await loadSubscriptions();
-        el.subscription.value = pending.form.subscriptionId || "";
-        await loadResourceGroups();
-        if (pending.form.resourceGroup) el["resource-group"].value = pending.form.resourceGroup;
-        refreshControls();
+      case "discoverRunner":
         return;
       case "install":
-        await loadSubscriptions();
-        el.subscription.value = pending.form.subscriptionId || "";
-        await loadResourceGroups();
-        el["resource-group"].value = pending.form.resourceGroup || "";
-        refreshControls();
         await installRunner();
         return;
       case "sendEmail":
-        await runOperation("payloads/send-email.ps1", "sendEmail", "Email");
+        await runOperation("payloads/send-email.ps1", "sendEmail", "Email", el["email-job-status"]);
         return;
       case "shareOneDriveFile":
-        await runOperation("payloads/share-onedrive-file.ps1", "shareOneDriveFile", "OneDrive file sharing");
+        await runOperation("payloads/share-onedrive-file.ps1", "shareOneDriveFile", "OneDrive file sharing", el["file-share-job-status"]);
         return;
       case "sendMessageBatch":
-        await runOperation("payloads/send-message-batch.ps1", "sendMessageBatch", "Message batch");
+        await runOperation("payloads/send-message-batch.ps1", "sendMessageBatch", "Message batch", el["message-batch-job-status"]);
         return;
       case "sendCustomerPaymentExport":
-        await runOperation("payloads/send-customer-payment-export.ps1", "sendCustomerPaymentExport", "Customer payment export");
-        return;
-      default:
-        setStatus("Signed in. Choose an action to authorize and continue.", "success");
+        await runOperation("payloads/send-customer-payment-export.ps1", "sendCustomerPaymentExport", "Customer payment export", el["payment-export-job-status"]);
     }
   }
 
@@ -330,11 +446,7 @@
   }
 
   async function handleAction(action) {
-    try {
-      await action();
-    } catch (error) {
-      if (error !== redirecting) setStatus(explainError(error), "error");
-    }
+    try { await action(); } catch (error) { if (error !== redirecting) setStatus(explainError(error), "error"); }
   }
 
   el["sign-in"].addEventListener("click", () => handleAction(async () => {
@@ -347,13 +459,11 @@
   });
   el["authorize-azure"].addEventListener("click", () => handleAction(() => loadSubscriptions()));
   el.subscription.addEventListener("change", () => handleAction(() => loadResourceGroups()));
-  el["resource-group"].addEventListener("change", refreshControls);
-  el.location.addEventListener("input", refreshControls);
-  el["automation-name"].addEventListener("input", refreshControls);
+  el["resource-group"].addEventListener("change", () => handleAction(() => discoverRunner()));
   el.install.addEventListener("click", () => handleAction(installRunner));
-  el.run.addEventListener("click", () => handleAction(() => runOperation("payloads/send-email.ps1", "sendEmail", "Email")));
-  el["run-file-share"].addEventListener("click", () => handleAction(() => runOperation("payloads/share-onedrive-file.ps1", "shareOneDriveFile", "OneDrive file sharing")));
-  el["run-email-triage"].addEventListener("click", () => handleAction(() => runOperation("payloads/send-message-batch.ps1", "sendMessageBatch", "Message batch")));
-  el["run-customer-payment-export"].addEventListener("click", () => handleAction(() => runOperation("payloads/send-customer-payment-export.ps1", "sendCustomerPaymentExport", "Customer payment export")));
+  el.run.addEventListener("click", () => handleAction(() => runOperation("payloads/send-email.ps1", "sendEmail", "Email", el["email-job-status"])));
+  el["run-file-share"].addEventListener("click", () => handleAction(() => runOperation("payloads/share-onedrive-file.ps1", "shareOneDriveFile", "OneDrive file sharing", el["file-share-job-status"])));
+  el["run-email-triage"].addEventListener("click", () => handleAction(() => runOperation("payloads/send-message-batch.ps1", "sendMessageBatch", "Message batch", el["message-batch-job-status"])));
+  el["run-customer-payment-export"].addEventListener("click", () => handleAction(() => runOperation("payloads/send-customer-payment-export.ps1", "sendCustomerPaymentExport", "Customer payment export", el["payment-export-job-status"])));
   initialize().catch(error => setStatus(explainError(error), "error"));
 })();

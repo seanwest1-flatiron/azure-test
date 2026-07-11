@@ -11,6 +11,10 @@ p { color: #c8d0e7; line-height: 1.6; }
 .notice { padding: 16px 20px; border-color: #4968d8; }
 .notice.error, .warning { border-color: #e0a33b; background: rgba(90,56,12,.55); }
 .notice.success { border-color: #35a86b; }
+.environment-status, .job-status { margin-top: 16px; padding: 14px 16px; border: 1px solid #4968d8; border-radius: 10px; color: #c8d0e7; line-height: 1.5; }
+.environment-status.ready, .job-status.success { border-color: #35a86b; }
+.environment-status.error, .job-status.error { border-color: #e0a33b; background: rgba(90,56,12,.35); }
+.job-status pre { max-height: 220px; margin: 12px 0 0; overflow: auto; white-space: pre-wrap; word-break: break-word; color: #e5eaff; font: .85rem/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .section-heading { display: flex; gap: 16px; align-items: center; justify-content: space-between; }
 .step { display: inline-grid; width: 28px; height: 28px; margin-right: 10px; place-items: center; border-radius: 50%; background: #33467e; color: #dce4ff; font-weight: 700; }
 .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 20px 0; }
