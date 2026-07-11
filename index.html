@@ -3,133 +3,53 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>After Party Azure Test</title>
-
-  <style>
-    :root {
-      color-scheme: dark;
-      font-family:
-        Inter, system-ui, -apple-system, BlinkMacSystemFont,
-        "Segoe UI", sans-serif;
-    }
-
-    * {
-      box-sizing: border-box;
-    }
-
-    body {
-      min-height: 100vh;
-      margin: 0;
-      display: grid;
-      place-items: center;
-      background:
-        radial-gradient(circle at top, #26365f, transparent 45%),
-        #0b1020;
-      color: #f5f7ff;
-    }
-
-    main {
-      width: min(680px, calc(100% - 32px));
-      padding: 48px;
-      border: 1px solid rgba(255, 255, 255, 0.14);
-      border-radius: 24px;
-      background: rgba(19, 27, 51, 0.86);
-      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
-    }
-
-    .eyebrow {
-      margin: 0 0 12px;
-      color: #9eb5ff;
-      font-size: 0.8rem;
-      font-weight: 700;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-    }
-
-    h1 {
-      margin: 0 0 16px;
-      font-size: clamp(2rem, 7vw, 3.5rem);
-      line-height: 1;
-    }
-
-    p {
-      max-width: 55ch;
-      margin: 0 0 28px;
-      color: #c8d0e7;
-      font-size: 1.05rem;
-      line-height: 1.65;
-    }
-
-    .deploy-button {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 52px;
-      padding: 0 24px;
-      border-radius: 12px;
-      background: #5f7cff;
-      color: white;
-      font-weight: 700;
-      text-decoration: none;
-      transition:
-        transform 150ms ease,
-        background 150ms ease;
-    }
-
-    .deploy-button:hover {
-      background: #7891ff;
-      transform: translateY(-2px);
-    }
-
-    .note {
-      margin-top: 24px;
-      margin-bottom: 0;
-      color: #8f9ab8;
-      font-size: 0.9rem;
-    }
-  </style>
+  <title>After Party Labs</title>
+  <link rel="stylesheet" href="styles.css">
 </head>
-
 <body>
   <main>
     <p class="eyebrow">After Party</p>
+    <h1>Run a lab in your tenant</h1>
+    <p class="lede">Sign in, install the reusable Azure Automation runner once, then start labs without returning to an Azure deployment form.</p>
 
-    <h1>Azure button test</h1>
+    <div id="configuration-warning" class="notice warning" hidden></div>
+    <div id="status" class="notice" role="status" aria-live="polite">Checking configuration…</div>
 
-    <p>
-      This test opens the Azure deployment screen and creates one
-      user-assigned managed identity in a resource group you select.
-    </p>
+    <section class="card">
+      <div class="section-heading">
+        <div><span class="step">1</span><h2>Sign in</h2></div>
+        <button id="sign-in" type="button">Sign in with Microsoft</button>
+        <button id="sign-out" class="secondary" type="button" hidden>Sign out</button>
+      </div>
+      <p id="account">Not signed in.</p>
+    </section>
 
-    <a
-      id="deploy-button"
-      class="deploy-button"
-      href="#"
-      target="_blank"
-      rel="noopener noreferrer"
-    >
-      Deploy test resource
-    </a>
+    <section class="card" id="install-section">
+      <div class="section-heading"><div><span class="step">2</span><h2>Install runner</h2></div></div>
+      <p>Creates an Automation account, system-assigned managed identity, and bootstrap runbook in a resource group you control.</p>
+      <div class="fields">
+        <label>Azure subscription<select id="subscription" disabled><option value="">Sign in first</option></select></label>
+        <label>Resource group<select id="resource-group" disabled><option value="">Choose a subscription</option></select></label>
+        <label>Azure region<input id="location" value="eastus" autocomplete="off" disabled></label>
+        <label>Automation account name<input id="automation-name" autocomplete="off" disabled></label>
+      </div>
+      <button id="install" type="button" disabled>Install runner and grant Mail.Send</button>
+    </section>
 
-    <p class="note">
-      Azure will ask you to sign in and review the deployment before
-      anything is created.
-    </p>
+    <section class="card">
+      <div class="section-heading"><div><span class="step">3</span><h2>Run email lab</h2></div></div>
+      <p>Sends one message from <code>kobe@corywest.onmicrosoft.com</code> to <code>cory@corywest.onmicrosoft.com</code>.</p>
+      <button id="run" type="button" disabled>Run lab</button>
+    </section>
+
+    <details>
+      <summary>Technical and permission details</summary>
+      <p>The installer uses your delegated ARM permissions to create Azure resources and delegated Graph permissions to assign an application role. The runbook receives a Graph token from Azure's managed identity endpoint. Tokens are never stored by this application.</p>
+    </details>
   </main>
 
-  <script>
-    const githubUsername = "seanwest1-flatiron";
-    const repositoryName = "azure-test";
-
-    const templateUrl =
-      `https://raw.githubusercontent.com/` +
-      `${githubUsername}/${repositoryName}/main/azuredeploy.json`;
-
-    const azurePortalBase =
-      "https://portal.azure.com/#create/Microsoft.Template/uri/";
-
-    document.getElementById("deploy-button").href =
-      azurePortalBase + encodeURIComponent(templateUrl);
-  </script>
+  <script src="config.js"></script>
+  <script src="msal-browser.min.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>

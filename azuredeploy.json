@@ -2,26 +2,74 @@
   "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
   "contentVersion": "1.0.0.0",
   "parameters": {
-    "identityName": {
+    "location": {
       "type": "string",
-      "defaultValue": "after-party-button-test",
+      "defaultValue": "[resourceGroup().location]",
       "metadata": {
-        "description": "Name of the test managed identity."
+        "description": "Azure region for the Automation resources."
       }
+    },
+    "automationAccountName": {
+      "type": "string",
+      "minLength": 6,
+      "maxLength": 50,
+      "metadata": {
+        "description": "Globally unique name for the reusable lab Automation account."
+      }
+    },
+    "bootstrapUri": {
+      "type": "string",
+      "defaultValue": "https://raw.githubusercontent.com/seanwest1-flatiron/azure-test/main/runbooks/bootstrap.ps1"
     }
   },
   "resources": [
     {
-      "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
-      "apiVersion": "2023-01-31",
-      "name": "[parameters('identityName')]",
-      "location": "[resourceGroup().location]"
+      "type": "Microsoft.Automation/automationAccounts",
+      "apiVersion": "2024-10-23",
+      "name": "[parameters('automationAccountName')]",
+      "location": "[parameters('location')]",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "properties": {
+        "disableLocalAuth": true,
+        "publicNetworkAccess": true,
+        "sku": {
+          "name": "Basic"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Automation/automationAccounts/runbooks",
+      "apiVersion": "2024-10-23",
+      "name": "[format('{0}/{1}', parameters('automationAccountName'), 'AfterPartyBootstrap')]",
+      "location": "[parameters('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Automation/automationAccounts', parameters('automationAccountName'))]"
+      ],
+      "properties": {
+        "description": "Downloads the current After Party lab payload for every job.",
+        "logProgress": false,
+        "logVerbose": true,
+        "runbookType": "PowerShell",
+        "publishContentLink": {
+          "uri": "[parameters('bootstrapUri')]"
+        }
+      }
     }
   ],
   "outputs": {
-    "message": {
+    "automationAccountName": {
       "type": "string",
-      "value": "The After Party test managed identity was created successfully."
+      "value": "[parameters('automationAccountName')]"
+    },
+    "managedIdentityPrincipalId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Automation/automationAccounts', parameters('automationAccountName')), '2024-10-23', 'Full').identity.principalId]"
+    },
+    "runbookName": {
+      "type": "string",
+      "value": "AfterPartyBootstrap"
     }
   }
 }
