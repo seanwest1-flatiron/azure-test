@@ -16,7 +16,7 @@
   const el = Object.fromEntries([
     "configuration-warning", "status", "sign-in", "sign-out", "account", "authorization", "authorize-azure",
     "subscription", "resource-group", "environment-status", "install", "run", "run-file-share", "run-email-triage",
-    "run-customer-payment-export", "run-external-email", "run-tenant-seed", "email-job-status", "file-share-job-status", "message-batch-job-status", "payment-export-job-status", "external-email-job-status", "tenant-seed-job-status", "diagnostics"
+    "run-customer-payment-export", "run-external-email", "run-tenant-seed", "run-failed-sign-in", "email-job-status", "file-share-job-status", "message-batch-job-status", "payment-export-job-status", "external-email-job-status", "tenant-seed-job-status", "failed-sign-in-job-status", "diagnostics"
   ].map(id => [id, document.getElementById(id)]));
   let msalClient;
   let account;
@@ -155,7 +155,8 @@
       sendMessageBatch: el["run-email-triage"],
       sendCustomerPaymentExport: el["run-customer-payment-export"],
       sendExternalEmail: el["run-external-email"],
-      seedTenant: el["run-tenant-seed"]
+      seedTenant: el["run-tenant-seed"],
+      failedSignIn: el["run-failed-sign-in"]
     }).forEach(([operation, button]) => {
       if (button) button.disabled = busy || !signedIn || !ready || activeOperations.size > 0;
     });
@@ -490,6 +491,9 @@
       case "seedTenant":
         await runOperation("payloads/seed-tenant.ps1", "seedTenant", "Tenant preparation", el["tenant-seed-job-status"]);
         return;
+      case "failedSignIn":
+        await runOperation("payloads/failed-sign-in.ps1", "failedSignIn", "Failed sign-in", el["failed-sign-in-job-status"]);
+        return;
     }
   }
 
@@ -545,5 +549,6 @@
   bind("run-customer-payment-export", "click", () => handleAction(() => runOperation("payloads/send-customer-payment-export.ps1", "sendCustomerPaymentExport", "Customer payment export", el["payment-export-job-status"])));
   bind("run-external-email", "click", () => handleAction(() => runOperation("payloads/send-external-email.ps1", "sendExternalEmail", "External email", el["external-email-job-status"])));
   bind("run-tenant-seed", "click", () => handleAction(() => runOperation("payloads/seed-tenant.ps1", "seedTenant", "Tenant preparation", el["tenant-seed-job-status"])));
+  bind("run-failed-sign-in", "click", () => handleAction(() => runOperation("payloads/failed-sign-in.ps1", "failedSignIn", "Failed sign-in", el["failed-sign-in-job-status"])));
   initialize().catch(error => setStatus(explainError(error), "error"));
 })();

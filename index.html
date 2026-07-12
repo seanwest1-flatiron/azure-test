@@ -80,6 +80,13 @@
       <div id="tenant-seed-job-status" class="job-status" role="status" aria-live="polite" hidden></div>
     </section>
 
+    <section class="card">
+      <div class="section-heading"><div><span class="step">9</span><h2>Failed sign-in</h2></div></div>
+      <p>Submits one incorrect-password sign-in for a seeded non-admin account so Microsoft Entra records the failed attempt.</p>
+      <button id="run-failed-sign-in" type="button" disabled>Record failed sign-in</button>
+      <div id="failed-sign-in-job-status" class="job-status" role="status" aria-live="polite" hidden></div>
+    </section>
+
     <details>
       <summary>Technical and permission details</summary>
       <p>The installer uses your delegated ARM permissions to create Azure resources and delegated Graph permissions to assign an application role. The runbook receives a Graph token from Azure's managed identity endpoint. Tokens are never stored by this application.</p>
