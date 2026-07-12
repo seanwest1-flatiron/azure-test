@@ -306,11 +306,28 @@
     const existingRoleIds = new Set((assignments.value || [])
       .filter(assignment => assignment.resourceId?.toLowerCase() === graphPrincipal.id.toLowerCase())
       .map(assignment => assignment.appRoleId));
+    const requiredRoles = [];
     for (const roleValue of APPLICATION_ROLES) {
       const appRole = graphPrincipal.appRoles?.find(role => role.value === roleValue && role.isEnabled && role.allowedMemberTypes?.includes("Application"));
       if (!appRole) throw new Error(`Microsoft Graph ${roleValue} application role was not found in this tenant.`);
+      requiredRoles.push(appRole);
       if (existingRoleIds.has(appRole.id)) continue;
       await grantApplicationRole(graphPrincipal, appRole, principalId);
+    }
+    await verifyApplicationPermissions(principalId, graphPrincipal, requiredRoles);
+  }
+
+  async function verifyApplicationPermissions(principalId, graphPrincipal, requiredRoles) {
+    for (let attempt = 0; attempt < 15; attempt += 1) {
+      const assignments = await getExistingApplicationAssignments(principalId);
+      const assignedRoleIds = new Set((assignments.value || [])
+        .filter(assignment => assignment.resourceId?.toLowerCase() === graphPrincipal.id.toLowerCase())
+        .map(assignment => assignment.appRoleId));
+      const missing = requiredRoles.filter(role => !assignedRoleIds.has(role.id));
+      if (!missing.length) return;
+      if (attempt === 14) throw new Error(`The Automation managed identity is missing required Microsoft Graph application roles: ${missing.map(role => role.value).join(", ")}.`);
+      setStatus(`Waiting for Microsoft Graph to confirm ${missing.length} application role assignment(s)…`);
+      await new Promise(resolve => setTimeout(resolve, 2000));
     }
   }
 

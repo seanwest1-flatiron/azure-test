@@ -1,9 +1,13 @@
 Describe 'Tenant seed license SKU matching' {
     BeforeAll {
         $seedScriptPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'payloads/seed-tenant.ps1'
+        $tokenPayload = @{ roles = @('LicenseAssignment.Read.All', 'LicenseAssignment.ReadWrite.All') } | ConvertTo-Json -Compress
+        $encodedPayload = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($tokenPayload)).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+        $graphAccessToken = "header.$encodedPayload.signature"
     }
 
     BeforeEach {
+        $global:AfterPartyGraphFailure = $false
         $global:AfterPartyTestSeed = [pscustomobject]@{
             licenses = [pscustomobject]@{
                 businessPremium = [pscustomobject]@{ displayName = 'Microsoft 365 Business Premium'; skuPartNumberCandidates = @('SPB', 'O365_BUSINESS_PREMIUM') }
@@ -19,6 +23,16 @@ Describe 'Tenant seed license SKU matching' {
             if ($Uri -like '*/version.json?nonce=*') { return [pscustomobject]@{ payloadVersion = '2026.07.12.1' } }
             if ($Uri -like '*/payloads/tenant-seed.json?version=*') { return $global:AfterPartyTestSeed }
             if ($Uri -eq 'https://graph.microsoft.com/v1.0/subscribedSkus') {
+                if ($global:AfterPartyGraphFailure) {
+                    $record = [Management.Automation.ErrorRecord]::new(
+                        [System.Exception]::new('Response status code does not indicate success: 403 (Forbidden).'),
+                        'GraphRequestFailed',
+                        [Management.Automation.ErrorCategory]::PermissionDenied,
+                        $Uri
+                    )
+                    $record.ErrorDetails = [Management.Automation.ErrorDetails]::new('{"error":{"code":"Authorization_RequestDenied","message":"Insufficient privileges to complete the operation."}}')
+                    throw $record
+                }
                 return [pscustomobject]@{ value = @(
                     [pscustomobject]@{ skuPartNumber = 'SPB'; skuId = 'business-premium-id' },
                     [pscustomobject]@{ skuPartNumber = 'DEFENDER_AND_PURVIEW_SUITES_FOR_BUSINESS_PREMIUM_NEW'; skuId = 'combined-suite-id' },
@@ -38,7 +52,7 @@ Describe 'Tenant seed license SKU matching' {
     }
 
     It 'selects SPB and the current combined Defender and Purview suite SKU' {
-        $output = & $seedScriptPath -GraphAccessToken 'not-a-real-token'
+        $output = & $seedScriptPath -GraphAccessToken $graphAccessToken
 
         Should -Invoke Invoke-RestMethod -Times 1 -ParameterFilter {
             $Uri -eq 'https://graph.microsoft.com/v1.0/groups/group-id/assignLicense' -and
@@ -46,6 +60,13 @@ Describe 'Tenant seed license SKU matching' {
             $Body -match 'combined-suite-id' -and
             $Body -notmatch 'defender-id|purview-id'
         }
+        ($output -contains 'Managed identity Graph roles: LicenseAssignment.Read.All, LicenseAssignment.ReadWrite.All') | Should -Be $true
         ($output -contains 'Using combined Defender and Purview license SKU.') | Should -Be $true
+    }
+
+    It 'reports the method, endpoint, status, Graph code, and Graph message' {
+        $global:AfterPartyGraphFailure = $true
+
+        { & $seedScriptPath -GraphAccessToken $graphAccessToken } | Should -Throw '*GET https://graph.microsoft.com/v1.0/subscribedSkus; HTTP 403; code: Authorization_RequestDenied; message: Insufficient privileges to complete the operation.*'
     }
 }

@@ -15,15 +15,76 @@ $seedUri = "$repositoryBase/payloads/tenant-seed.json?version=$([Uri]::EscapeDat
 $seed = Invoke-RestMethod -Method GET -Uri $seedUri
 $headers = @{ Authorization = "Bearer $GraphAccessToken" }
 
+function Get-AccessTokenRoles {
+    param([string] $AccessToken)
+    $segments = $AccessToken.Split('.')
+    if ($segments.Count -lt 2) { throw 'The managed identity Graph access token was not a valid JWT.' }
+    $encodedPayload = $segments[1].Replace('-', '+').Replace('_', '/')
+    switch ($encodedPayload.Length % 4) {
+        2 { $encodedPayload += '==' }
+        3 { $encodedPayload += '=' }
+    }
+    try {
+        $payloadJson = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($encodedPayload))
+        $payload = $payloadJson | ConvertFrom-Json
+    } catch {
+        throw 'The managed identity Graph access token payload could not be decoded.'
+    }
+    return @($payload.roles | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Sort-Object -Unique)
+}
+
+function Get-GraphStatusCode {
+    param($ErrorRecord)
+    if ($ErrorRecord.Exception.Data.Contains('StatusCode')) { return [int]$ErrorRecord.Exception.Data['StatusCode'] }
+    if ($null -ne $ErrorRecord.Exception.Response -and $null -ne $ErrorRecord.Exception.Response.StatusCode) {
+        if ($null -ne $ErrorRecord.Exception.Response.StatusCode.value__) { return [int]$ErrorRecord.Exception.Response.StatusCode.value__ }
+        return [int]$ErrorRecord.Exception.Response.StatusCode
+    }
+    if ($ErrorRecord.Exception.Message -match '\b([45][0-9]{2})\b') { return [int]$Matches[1] }
+    return 0
+}
+
 function Invoke-Graph {
     param([string] $Method, [string] $Path, $Body)
-    $parameters = @{ Method = $Method; Uri = "https://graph.microsoft.com/v1.0$Path"; Headers = $headers }
+    $uri = "https://graph.microsoft.com/v1.0$Path"
+    $parameters = @{ Method = $Method; Uri = $uri; Headers = $headers }
     if ($PSBoundParameters.ContainsKey('Body')) {
         $parameters.ContentType = 'application/json'
         $parameters.Body = $Body | ConvertTo-Json -Depth 12
     }
-    Invoke-RestMethod @parameters
+    try {
+        Invoke-RestMethod @parameters
+    } catch {
+        $statusCode = Get-GraphStatusCode -ErrorRecord $_
+        $errorBody = $_.ErrorDetails.Message
+        if ([string]::IsNullOrWhiteSpace([string]$errorBody) -and $null -ne $_.Exception.Response) {
+            try {
+                $responseStream = $_.Exception.Response.GetResponseStream()
+                if ($null -ne $responseStream) {
+                    $reader = [IO.StreamReader]::new($responseStream)
+                    try { $errorBody = $reader.ReadToEnd() } finally { $reader.Dispose() }
+                }
+            } catch { }
+        }
+        $graphCode = 'Unknown'
+        $graphMessage = $_.Exception.Message
+        if (-not [string]::IsNullOrWhiteSpace([string]$errorBody)) {
+            try {
+                $graphError = $errorBody | ConvertFrom-Json
+                if (-not [string]::IsNullOrWhiteSpace([string]$graphError.error.code)) { $graphCode = [string]$graphError.error.code }
+                if (-not [string]::IsNullOrWhiteSpace([string]$graphError.error.message)) { $graphMessage = [string]$graphError.error.message }
+            } catch { }
+        }
+        $statusText = if ($statusCode) { [string]$statusCode } else { 'unknown' }
+        $detail = "Microsoft Graph request failed: $Method $uri; HTTP $statusText; code: $graphCode; message: $graphMessage"
+        $exception = [System.Exception]::new($detail, $_.Exception)
+        if ($statusCode) { $exception.Data['StatusCode'] = $statusCode }
+        throw $exception
+    }
 }
+
+$tokenRoles = @(Get-AccessTokenRoles -AccessToken $GraphAccessToken)
+Write-Output "Managed identity Graph roles: $(if ($tokenRoles.Count) { $tokenRoles -join ', ' } else { '(none)' })"
 
 function New-TemporaryPassword {
     $characters = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -46,7 +107,7 @@ function Get-SeedUser {
         Invoke-Graph -Method PATCH -Path "/users/$($user.id)" -Body $profile | Out-Null
         return @{ User = $user; Created = $false }
     } catch {
-        if ($_.Exception.Response.StatusCode.value__ -ne 404) { throw }
+        if ((Get-GraphStatusCode -ErrorRecord $_) -ne 404) { throw }
     }
 
     $newUser = Invoke-Graph -Method POST -Path '/users' -Body @{
@@ -130,7 +191,7 @@ foreach ($seedUser in $seed.users) {
         try {
             Invoke-Graph -Method POST -Path "/groups/$($group.id)/members/`$ref" -Body @{ '@odata.id' = "https://graph.microsoft.com/v1.0/directoryObjects/$($result.User.id)" } | Out-Null
         } catch {
-            if ($_.Exception.Response.StatusCode.value__ -ne 400 -or $_.Exception.Message -notmatch 'already exist') { throw }
+            if ((Get-GraphStatusCode -ErrorRecord $_) -ne 400 -or $_.Exception.Message -notmatch 'already exist') { throw }
         }
     }
 }
