@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>After Party Labs</title>
-  <link rel="stylesheet" href="styles.css?v=20260711-operation-progress">
+  <link rel="stylesheet" href="styles.css?v=20260711-tenant-seed">
 </head>
 <body>
   <main>
@@ -72,14 +72,22 @@
       <div id="external-email-job-status" class="job-status" role="status" aria-live="polite" hidden></div>
     </section>
 
+    <section class="card">
+      <div class="section-heading"><div><span class="step">8</span><h2>Seed tenant users</h2></div></div>
+      <p>Creates or updates the 16 configured employee accounts, adds them to the All Employees group, and applies the configured Microsoft 365 licenses.</p>
+      <p class="note">Before the first run, select <strong>Update environment</strong> once to grant the required directory and license permissions to the Automation identity.</p>
+      <button id="run-tenant-seed" type="button" disabled>Seed tenant users</button>
+      <div id="tenant-seed-job-status" class="job-status" role="status" aria-live="polite" hidden></div>
+    </section>
+
     <details>
       <summary>Technical and permission details</summary>
       <p>The installer uses your delegated ARM permissions to create Azure resources and delegated Graph permissions to assign an application role. The runbook receives a Graph token from Azure's managed identity endpoint. Tokens are never stored by this application.</p>
     </details>
   </main>
 
-  <script src="config.js?v=20260711-operation-progress"></script>
+  <script src="config.js?v=20260711-tenant-seed"></script>
   <script src="msal-browser.min.js"></script>
-  <script src="app.js?v=20260711-operation-progress"></script>
+  <script src="app.js?v=20260711-tenant-seed"></script>
 </body>
 </html>

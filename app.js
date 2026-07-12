@@ -5,7 +5,7 @@
   const ARM = "https://management.azure.com";
   const GRAPH = "https://graph.microsoft.com/v1.0";
   const GRAPH_APP_ID = "00000003-0000-0000-c000-000000000000";
-  const APPLICATION_ROLES = Object.freeze(["Mail.Send", "Files.ReadWrite.All"]);
+  const APPLICATION_ROLES = Object.freeze(["Mail.Send", "Files.ReadWrite.All", "User.ReadWrite.All", "Group.ReadWrite.All", "GroupMember.ReadWrite.All", "LicenseAssignment.Read.All", "LicenseAssignment.ReadWrite.All"]);
   const ARM_SCOPE = "https://management.azure.com/user_impersonation";
   const GRAPH_SCOPES = ["Application.Read.All", "AppRoleAssignment.ReadWrite.All"];
   const RUNNER_STORAGE_KEY = "afterParty.runner.v2";
@@ -14,7 +14,7 @@
   const el = Object.fromEntries([
     "configuration-warning", "status", "sign-in", "sign-out", "account", "authorization", "authorize-azure",
     "subscription", "resource-group", "environment-status", "install", "run", "run-file-share", "run-email-triage",
-    "run-customer-payment-export", "run-external-email", "email-job-status", "file-share-job-status", "message-batch-job-status", "payment-export-job-status", "external-email-job-status"
+    "run-customer-payment-export", "run-external-email", "run-tenant-seed", "email-job-status", "file-share-job-status", "message-batch-job-status", "payment-export-job-status", "external-email-job-status", "tenant-seed-job-status"
   ].map(id => [id, document.getElementById(id)]));
   let msalClient;
   let account;
@@ -121,7 +121,8 @@
       shareOneDriveFile: el["run-file-share"],
       sendMessageBatch: el["run-email-triage"],
       sendCustomerPaymentExport: el["run-customer-payment-export"],
-      sendExternalEmail: el["run-external-email"]
+      sendExternalEmail: el["run-external-email"],
+      seedTenant: el["run-tenant-seed"]
     }).forEach(([operation, button]) => {
       if (button) button.disabled = busy || !signedIn || !ready || activeOperations.size > 0;
     });
@@ -469,6 +470,9 @@
       case "sendExternalEmail":
         await runOperation("payloads/send-external-email.ps1", "sendExternalEmail", "External email", el["external-email-job-status"]);
         return;
+      case "seedTenant":
+        await runOperation("payloads/seed-tenant.ps1", "seedTenant", "Tenant seed", el["tenant-seed-job-status"]);
+        return;
     }
   }
 
@@ -522,5 +526,6 @@
   bind("run-email-triage", "click", () => handleAction(() => runOperation("payloads/send-message-batch.ps1", "sendMessageBatch", "Message batch", el["message-batch-job-status"])));
   bind("run-customer-payment-export", "click", () => handleAction(() => runOperation("payloads/send-customer-payment-export.ps1", "sendCustomerPaymentExport", "Customer payment export", el["payment-export-job-status"])));
   bind("run-external-email", "click", () => handleAction(() => runOperation("payloads/send-external-email.ps1", "sendExternalEmail", "External email", el["external-email-job-status"])));
+  bind("run-tenant-seed", "click", () => handleAction(() => runOperation("payloads/seed-tenant.ps1", "seedTenant", "Tenant seed", el["tenant-seed-job-status"])));
   initialize().catch(error => setStatus(explainError(error), "error"));
 })();
