@@ -48,6 +48,25 @@ function Invoke-Arm {
     Invoke-RestMethod @parameters
 }
 
+function Test-ContainerGroupDeploymentNotReady {
+    param($ErrorRecord)
+    $details = @([string]$ErrorRecord.Exception.Message, [string]$ErrorRecord.ErrorDetails.Message)
+    return @($details | Where-Object { $_ -match '(^|[^A-Za-z])ContainerGroupDeploymentNotReady([^A-Za-z]|$)' }).Count -gt 0
+}
+
+function Get-ContainerDiagnosticSummary {
+    param($Container)
+    $containerDetails = $Container.properties.containers[0]
+    $instanceView = $containerDetails.properties.instanceView
+    $events = @($instanceView.events | Select-Object -Last 5 | ForEach-Object {
+        $name = if ($_.name) { $_.name } else { 'event' }
+        $message = if ($_.message) { $_.message } else { $_.count }
+        "${name}: $message"
+    }) -join ' | '
+    if ([string]::IsNullOrWhiteSpace($events)) { $events = 'none' }
+    return "Container logs remained unavailable after 30 seconds. Group state: $($Container.properties.instanceView.state); provisioning state: $($Container.properties.provisioningState); container state: $($instanceView.currentState.state); exit code: $($instanceView.currentState.exitCode); recent container events: $events"
+}
+
 $tenantId = Get-JwtClaim -AccessToken $GraphAccessToken -Name 'tid'
 if ([string]::IsNullOrWhiteSpace($tenantId)) { throw 'The managed identity Graph access token did not contain a tenant ID.' }
 $armAccessToken = Get-ArmAccessToken
@@ -90,7 +109,17 @@ try {
         Start-Sleep -Seconds 2
     }
     if ($null -eq $container -or [string]$container.properties.containers[0].properties.instanceView.currentState.state -ne 'Terminated') { throw 'The browser worker did not finish within six minutes.' }
-    $logs = Invoke-Arm -Method GET -Path "$containerPath/containers/browser-worker/logs?api-version=2023-05-01&tail=200"
+    $logs = $null
+    for ($attempt = 1; $attempt -le 10; $attempt += 1) {
+        try {
+            $logs = Invoke-Arm -Method GET -Path "$containerPath/containers/browser-worker/logs?api-version=2023-05-01&tail=200"
+            break
+        } catch {
+            if (-not (Test-ContainerGroupDeploymentNotReady -ErrorRecord $_)) { throw }
+            if ($attempt -eq 10) { throw (Get-ContainerDiagnosticSummary -Container $container) }
+            Start-Sleep -Seconds 3
+        }
+    }
     $content = [string]$logs.content
     if ([string]::IsNullOrWhiteSpace($content)) { throw 'The browser worker produced no diagnostic output.' }
     Write-Output $content

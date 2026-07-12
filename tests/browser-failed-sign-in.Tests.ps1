@@ -10,6 +10,8 @@ Describe 'Browser failed sign-in payload' {
         $env:IDENTITY_ENDPOINT = 'http://identity.test/token'
         $env:IDENTITY_HEADER = 'identity-header'
         $global:AfterPartyContainerRequest = $null
+        $global:AfterPartyLogRequestCount = 0
+        $global:AfterPartyLogsNotReadyOnce = $false
         Mock Invoke-RestMethod {
             param($Uri, $Method, $Body)
             $uriText = [string]$Uri
@@ -27,6 +29,8 @@ Describe 'Browser failed sign-in payload' {
                 return [pscustomobject]@{}
             }
             if ($Method -eq 'GET' -and $uriText -like '*/containers/browser-worker/logs?*') {
+                $global:AfterPartyLogRequestCount += 1
+                if ($global:AfterPartyLogsNotReadyOnce -and $global:AfterPartyLogRequestCount -eq 1) { throw [System.Exception]::new('ContainerGroupDeploymentNotReady') }
                 return [pscustomobject]@{ content = 'BROWSER_SIGN_IN_RESULT {"upn":"lisa.simpson@corywest.onmicrosoft.com","timestampUtc":"2026-07-12T12:00:00Z","result":"credentials_rejected","diagnostic":{"message":"Credentials rejected."}}' }
             }
             if ($Method -eq 'GET' -and $uriText -like 'https://management.azure.com/subscriptions/subscription-id/resourcegroups/after-test/providers/Microsoft.ContainerInstance/containerGroups/*') {
@@ -45,6 +49,19 @@ Describe 'Browser failed sign-in payload' {
         $global:AfterPartyContainerRequest.properties.containers[0].properties.image | Should -Be 'mcr.microsoft.com/playwright:v1.61.0-noble'
         ($output -match 'Browser failed sign-in confirmed for lisa.simpson@corywest.onmicrosoft.com') | Should -Be $true
         Should -Invoke Invoke-RestMethod -Times 1 -ParameterFilter { $Method -eq 'PUT' -and ([string]$Uri) -match 'Microsoft.ContainerInstance/containerGroups' }
+        Should -Invoke Invoke-RestMethod -Times 1 -ParameterFilter { $Method -eq 'DELETE' -and ([string]$Uri) -match 'Microsoft.ContainerInstance/containerGroups' }
+    }
+
+    It 'retries only the existing container logs request when ACI is briefly not ready' {
+        $global:AfterPartyLogsNotReadyOnce = $true
+        Mock Start-Sleep {}
+
+        $output = & $payloadPath -GraphAccessToken $graphAccessToken -SubscriptionId 'subscription-id' -ResourceGroup 'after-test'
+
+        ($output -match 'Browser failed sign-in confirmed for lisa.simpson@corywest.onmicrosoft.com') | Should -Be $true
+        $global:AfterPartyLogRequestCount | Should -Be 2
+        Should -Invoke Invoke-RestMethod -Times 1 -ParameterFilter { $Method -eq 'PUT' -and ([string]$Uri) -match 'Microsoft.ContainerInstance/containerGroups' }
+        Should -Invoke Invoke-RestMethod -Times 2 -ParameterFilter { $Method -eq 'GET' -and ([string]$Uri) -match '/containers/browser-worker/logs\?' }
         Should -Invoke Invoke-RestMethod -Times 1 -ParameterFilter { $Method -eq 'DELETE' -and ([string]$Uri) -match 'Microsoft.ContainerInstance/containerGroups' }
     }
 }
