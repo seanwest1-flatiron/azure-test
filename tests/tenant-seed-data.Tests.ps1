@@ -18,6 +18,12 @@ Describe 'Version-controlled tenant baseline data' {
         $seed.licensingGroup.mailNickname | Should -Be 'allemployees'
     }
 
+    It 'uses a dedicated public client for the failed sign-in generator' {
+        $seed.failedSignInLab.clientId | Should -Be '7383ffdd-51f7-4cb2-8f4e-a7793939fdae'
+        $seed.failedSignInLab.clientId | Should -Not -Be 'f1d183a6-1a01-4daf-b5ca-70f44427de17'
+        $seed.failedSignInLab.userPrincipalName | Should -Be 'lisa.simpson@corywest.onmicrosoft.com'
+    }
+
     It 'defines the expected department memberships' {
         $expected = @{
             'Executive' = @('cory@corywest.onmicrosoft.com', 'kobe@corywest.onmicrosoft.com')

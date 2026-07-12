@@ -71,6 +71,9 @@ isolated tenant before using this design elsewhere.
 - `payloads/tenant-seed.json`: source of truth for baseline users, departments, groups, memberships, and licenses
 - `payloads/seed-tenant.ps1`: prepares and validates the version-controlled tenant baseline
 - `payloads/failed-sign-in.ps1`: records one expected invalid-credentials sign-in for a seeded non-admin user
+
+The failed-sign-in payload uses its own single-tenant public-client registration;
+it does not enable public-client flows on the browser SPA registration.
 - `version.json`: cache-busting site, runner, and payload release versions
 
 ## Tests and command-line job runner

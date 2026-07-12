@@ -55,7 +55,7 @@
     "purview": { "displayName": "Microsoft Purview Suite for Business Premium", "skuPartNumberCandidates": ["PURVIEW_SUITE_BUSINESS_PREMIUM", "PURVIEW_SUITE_BIZ_PREMIUM", "Microsoft_Purview_Suite_for_Business_Premium"] }
   },
   "failedSignInLab": {
-    "clientId": "f1d183a6-1a01-4daf-b5ca-70f44427de17",
+    "clientId": "7383ffdd-51f7-4cb2-8f4e-a7793939fdae",
     "userPrincipalName": "lisa.simpson@corywest.onmicrosoft.com"
   },
   "users": [
