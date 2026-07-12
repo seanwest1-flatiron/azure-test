@@ -123,6 +123,7 @@
         await addStylesheet(`styles.css?v=${version}`);
         await addScript(`config.js?v=${version}`);
         await addScript(`msal-browser.min.js?v=${version}`);
+        await addScript(`automation-client.js?v=${version}`);
         await addScript(`app.js?v=${version}`);
       })().catch(showLoaderError);
     })();

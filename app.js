@@ -2,6 +2,7 @@
 
 (() => {
   const config = window.AFTER_PARTY_CONFIG;
+  const automation = window.AfterPartyAutomation;
   const ARM = "https://management.azure.com";
   const GRAPH = "https://graph.microsoft.com/v1.0";
   const GRAPH_APP_ID = "00000003-0000-0000-c000-000000000000";
@@ -11,7 +12,7 @@
   const RUNNER_STORAGE_KEY = "afterParty.runner.v2";
   const PENDING_OPERATION_KEY = "afterParty.pendingOperation.v1";
   const JOB_POLL_INTERVAL_MS = 1000;
-  const apiVersions = Object.freeze({ resources: "2021-04-01", deployments: "2022-09-01", automation: "2024-10-23" });
+  const apiVersions = Object.freeze({ resources: "2021-04-01", deployments: "2022-09-01", automation: automation.API_VERSION });
   const el = Object.fromEntries([
     "configuration-warning", "status", "sign-in", "sign-out", "account", "authorization", "authorize-azure",
     "subscription", "resource-group", "environment-status", "install", "run", "run-file-share", "run-email-triage",
@@ -225,14 +226,6 @@
     return `after-party-${account.tenantId}`;
   }
 
-  function accountPath(subscriptionId, resourceGroup, automationAccountName) {
-    return `/subscriptions/${encodeURIComponent(subscriptionId)}/resourcegroups/${encodeURIComponent(resourceGroup)}/providers/Microsoft.Automation/automationAccounts/${encodeURIComponent(automationAccountName)}`;
-  }
-
-  function automationAccountsPath(subscriptionId, resourceGroup) {
-    return `/subscriptions/${encodeURIComponent(subscriptionId)}/resourcegroups/${encodeURIComponent(resourceGroup)}/providers/Microsoft.Automation/automationAccounts`;
-  }
-
   async function loadSubscriptions(operation = "loadSubscriptions") {
     setStatus("Loading Azure subscriptions…");
     const result = await arm(`/subscriptions?api-version=${apiVersions.resources}`, {}, operation);
@@ -275,22 +268,18 @@
     }
     setEnvironment("Checking for an existing After Party environment…");
     refreshControls();
-    const listPath = `${automationAccountsPath(subscriptionId, resourceGroup)}?api-version=${apiVersions.automation}`;
-    const accounts = (await arm(listPath, {}, operation)).value || [];
-    const candidates = accounts
-      .filter(item => item.tags?.["after-party-runner"] === "true" || /^after-party-/i.test(item.name))
-      .sort((left, right) => Number(right.tags?.["after-party-runner"] === "true") - Number(left.tags?.["after-party-runner"] === "true"));
-    for (const candidate of candidates) {
-      try {
-        await arm(`${accountPath(subscriptionId, resourceGroup, candidate.name)}/runbooks/${encodeURIComponent(config.runbookName)}?api-version=${apiVersions.automation}`);
-        const runner = { tenantId: account.tenantId, subscriptionId, resourceGroup, automationAccountName: candidate.name, runbookName: config.runbookName, runnerVersion: candidate.tags?.["after-party-runner-version"] || "unknown (update environment to record version)" };
-        storeRunner(runner);
-        setEnvironment(`Ready — using the existing After Party Automation account “${candidate.name}”. No setup is required when you return.`, "ready");
-        refreshControls();
-        return;
-      } catch (error) {
-        if (error.status !== 404) throw error;
-      }
+    const runner = await automation.findRunner({
+      requestJson: (path, options = {}) => arm(path, options, operation),
+      subscriptionId,
+      resourceGroup,
+      runbookName: config.runbookName
+    });
+    if (runner) {
+      runner.tenantId = account.tenantId;
+      storeRunner(runner);
+      setEnvironment(`Ready — using the existing After Party Automation account “${runner.automationAccountName}”. No setup is required when you return.`, "ready");
+      refreshControls();
+      return;
     }
     setEnvironment("No After Party environment was found in this resource group. Set it up once to continue.");
     refreshControls();
@@ -385,49 +374,27 @@
     }
   }
 
-  function jobState(status) {
-    if (["New", "Activating", "Queued"].includes(status)) return "Queued";
-    if (status === "Running") return "Running";
-    if (status === "Completed") return "Completed";
-    return status || "Queued";
-  }
-
-  async function getJobDetails(jobPath, job) {
-    const parts = [];
-    try {
-      const output = await armText(`${jobPath}/output?api-version=${apiVersions.automation}`);
-      if (output) parts.push(output);
-    } catch { /* Job output is not always available after a failed job. */ }
-    if (job.properties?.exception) parts.push(job.properties.exception);
-    try {
-      const streams = await arm(`${jobPath}/streams?api-version=${apiVersions.automation}`);
-      const errors = (streams.value || []).filter(stream => stream.properties?.streamType === "Error").map(stream => stream.properties.streamText || stream.properties.summary || String(stream.properties.value || "")).filter(Boolean);
-      if (errors.length) parts.push(errors.join("\n"));
-    } catch { /* The job status still supplies the primary failure message. */ }
-    return [...new Set(parts)].join("\n");
-  }
-
   async function pollJob(jobPath, statusElement, label, jobId, operation) {
     try {
-      for (let attempt = 0; attempt < 600; attempt += 1) {
-        const job = await arm(`${jobPath}?api-version=${apiVersions.automation}`);
-        const status = jobState(job.properties?.status);
-        if (status === "Completed") {
-          const output = await getJobDetails(jobPath, job);
-          setJobStatus(statusElement, `${label}: completed.`, "success", output || "The operation completed successfully.");
-          return;
+      const result = await automation.waitForJob({
+        requestJson: (path, options = {}) => arm(path, options),
+        requestText: path => armText(path),
+        jobPath,
+        intervalMs: JOB_POLL_INTERVAL_MS,
+        onStatus: ({ attempt, status }) => {
+          if (["Completed", ...automation.TERMINAL_FAILURE_STATES].includes(status)) return;
+          const spinner = ["◐", "◓", "◑", "◒"][attempt % 4];
+          setJobStatus(statusElement, `${spinner} ${label}: ${status.toLowerCase()}… Job ID: ${jobId}`, status.toLowerCase());
         }
-        if (["Failed", "Stopped", "Blocked", "Suspended", "Disconnected"].includes(status)) {
-          const output = await getJobDetails(jobPath, job);
-          const detail = output || job.properties?.statusDetails || "Azure Automation did not provide additional details.";
-          setJobStatus(statusElement, `${label}: ${status.toLowerCase()}.`, "error", detail);
-          return;
-        }
-        const spinner = ["◐", "◓", "◑", "◒"][attempt % 4];
-        setJobStatus(statusElement, `${spinner} ${label}: ${status.toLowerCase()}… Job ID: ${jobId}`, status.toLowerCase());
-        await new Promise(resolve => setTimeout(resolve, JOB_POLL_INTERVAL_MS));
+      });
+      if (result.status === "Completed") {
+        setJobStatus(statusElement, `${label}: completed.`, "success", result.output || "The operation completed successfully.");
+      } else if (automation.TERMINAL_FAILURE_STATES.includes(result.status)) {
+        const detail = result.output || result.job.properties?.statusDetails || "Azure Automation did not provide additional details.";
+        setJobStatus(statusElement, `${label}: ${result.status.toLowerCase()}.`, "error", detail);
+      } else {
+        setJobStatus(statusElement, `${label}: status refresh timed out after 10 minutes. The button is available again; check the Automation account before starting another job.`, "error");
       }
-      setJobStatus(statusElement, `${label}: status refresh timed out after 10 minutes. The button is available again; check the Automation account before starting another job.`, "error");
     } finally {
       activeOperations.delete(operation);
       refreshControls();
@@ -447,9 +414,8 @@
     try {
       await token([ARM_SCOPE], operation);
       const jobId = crypto.randomUUID();
-      const jobPath = `${accountPath(runner.subscriptionId, runner.resourceGroup, runner.automationAccountName)}/jobs/${jobId}`;
       setJobStatus(statusElement, `◐ ${label}: queued… Job ID: ${jobId}`, "queued");
-      await arm(`${jobPath}?api-version=${apiVersions.automation}`, { method: "PUT", body: JSON.stringify({ properties: { runbook: { name: runner.runbookName }, parameters: { LabPath: payloadPath } } }) });
+      const { jobPath } = await automation.startJob({ requestJson: (path, options = {}) => arm(path, options), runner, payloadPath, jobId });
       jobStarted = true;
       void pollJob(jobPath, statusElement, label, jobId, operation).catch(error => setJobStatus(statusElement, `${label}: unable to refresh status.`, "error", explainError(error)));
     } finally {

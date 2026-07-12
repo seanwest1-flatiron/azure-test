@@ -59,6 +59,7 @@ isolated tenant before using this design elsewhere.
 ## Files
 
 - `index.html`, `styles.css`, `app.js`: static application
+- `automation-client.js`: shared Automation account discovery and job lifecycle logic
 - `config.js`: public, non-secret SPA and repository settings
 - `azuredeploy.json`: Automation account and bootstrap runbook deployment
 - `runbooks/bootstrap.ps1`: stable runner installed into Automation
@@ -70,6 +71,28 @@ isolated tenant before using this design elsewhere.
 - `payloads/tenant-seed.json`: source of truth for the tenant seed
 - `payloads/seed-tenant.ps1`: creates or updates seeded users, membership, and licenses
 - `version.json`: cache-busting site, runner, and payload release versions
+
+## Tests and command-line job runner
+
+Run the PowerShell and shared Automation client tests with:
+
+```powershell
+./tests/run-tests.ps1
+```
+
+The test runner requires Pester 5 or newer and Node.js 20 or newer.
+
+With Azure CLI signed in, start an existing payload and print its complete
+Automation output or error with:
+
+```bash
+node scripts/run-lab.mjs --subscription <subscription-id> --resource-group <resource-group> --lab payloads/send-email.ps1
+```
+
+The command discovers the existing After Party Automation account. Pass
+`--automation-account <name>` only when the resource group contains more than
+one candidate. It uses the same account discovery, job creation, polling, and
+output collection implementation as the web application.
 
 To have Purview apply a DLP action to the payment export, configure an Exchange
 DLP policy for external recipients that detects the Credit Card Number sensitive
