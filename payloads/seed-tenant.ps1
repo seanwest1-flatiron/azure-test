@@ -83,6 +83,28 @@ function Invoke-Graph {
     }
 }
 
+function Invoke-GraphWithRetry {
+    param(
+        [string] $Method,
+        [string] $Path,
+        $Body,
+        [int[]] $RetryStatusCodes = @(404),
+        [int] $MaximumAttempts = 15
+    )
+    $parameters = @{ Method = $Method; Path = $Path }
+    if ($PSBoundParameters.ContainsKey('Body')) { $parameters.Body = $Body }
+    for ($attempt = 1; $attempt -le $MaximumAttempts; $attempt += 1) {
+        try {
+            return Invoke-Graph @parameters
+        } catch {
+            $statusCode = Get-GraphStatusCode -ErrorRecord $_
+            if ($RetryStatusCodes -notcontains $statusCode -or $attempt -eq $MaximumAttempts) { throw }
+            Write-Output "Waiting for Microsoft Graph directory changes before retrying $Method $Path."
+            Start-Sleep -Seconds 2
+        }
+    }
+}
+
 $tokenRoles = @(Get-AccessTokenRoles -AccessToken $GraphAccessToken)
 Write-Output "Managed identity Graph roles: $(if ($tokenRoles.Count) { $tokenRoles -join ', ' } else { '(none)' })"
 
@@ -175,7 +197,7 @@ if (-not $group) {
 $existingLicenseIds = @($group.assignedLicenses | ForEach-Object skuId)
 $missingLicenses = @($licenses | Where-Object { $existingLicenseIds -notcontains $_.skuId })
 if ($missingLicenses.Count -gt 0) {
-    Invoke-Graph -Method POST -Path "/groups/$($group.id)/assignLicense" -Body @{ addLicenses = $missingLicenses; removeLicenses = @() } | Out-Null
+    Invoke-GraphWithRetry -Method POST -Path "/groups/$($group.id)/assignLicense" -Body @{ addLicenses = $missingLicenses; removeLicenses = @() } | Out-Null
     Write-Output "Assigned $($missingLicenses.Count) license SKU(s) to $($group.displayName)."
 } else {
     Write-Output 'All requested license SKUs are already assigned to the group.'
@@ -189,7 +211,7 @@ foreach ($seedUser in $seed.users) {
     if ($result.Created) { $created += 1 } else { $reused += 1 }
     if ($memberIds -notcontains $result.User.id) {
         try {
-            Invoke-Graph -Method POST -Path "/groups/$($group.id)/members/`$ref" -Body @{ '@odata.id' = "https://graph.microsoft.com/v1.0/directoryObjects/$($result.User.id)" } | Out-Null
+            Invoke-GraphWithRetry -Method POST -Path "/groups/$($group.id)/members/`$ref" -Body @{ '@odata.id' = "https://graph.microsoft.com/v1.0/directoryObjects/$($result.User.id)" } | Out-Null
         } catch {
             if ((Get-GraphStatusCode -ErrorRecord $_) -ne 400 -or $_.Exception.Message -notmatch 'already exist') { throw }
         }
