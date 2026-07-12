@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Cache-Control" content="no-cache">
   <title>After Party Labs</title>
-  <link rel="stylesheet" href="styles.css?v=20260711-tenant-seed">
 </head>
 <body>
   <main>
@@ -84,10 +84,48 @@
       <summary>Technical and permission details</summary>
       <p>The installer uses your delegated ARM permissions to create Azure resources and delegated Graph permissions to assign an application role. The runbook receives a Graph token from Azure's managed identity endpoint. Tokens are never stored by this application.</p>
     </details>
+
+    <details class="diagnostics">
+      <summary>Diagnostics</summary>
+      <p id="diagnostics">Loading site version…</p>
+    </details>
   </main>
 
-  <script src="config.js?v=20260711-tenant-seed"></script>
-  <script src="msal-browser.min.js"></script>
-  <script src="app.js?v=20260711-tenant-seed"></script>
+  <script>
+    (() => {
+      const addStylesheet = source => new Promise((resolve, reject) => {
+        const link = document.createElement("link");
+        link.rel = "stylesheet";
+        link.href = source;
+        link.onload = resolve;
+        link.onerror = () => reject(new Error(`Could not load ${source}.`));
+        document.head.append(link);
+      });
+      const addScript = source => new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = source;
+        script.onload = resolve;
+        script.onerror = () => reject(new Error(`Could not load ${source}.`));
+        document.body.append(script);
+      });
+      const showLoaderError = error => {
+        const status = document.getElementById("status");
+        status.textContent = `Unable to load the current site files: ${error.message}`;
+        status.className = "notice error";
+      };
+      (async () => {
+        const manifestResponse = await fetch(`version.json?nonce=${Date.now()}`, { cache: "no-store" });
+        if (!manifestResponse.ok) throw new Error(`version manifest returned ${manifestResponse.status}.`);
+        const manifest = await manifestResponse.json();
+        if (!manifest.siteVersion || !manifest.runnerVersion || !manifest.payloadVersion) throw new Error("version manifest is incomplete.");
+        window.AFTER_PARTY_BUILD = Object.freeze(manifest);
+        const version = encodeURIComponent(manifest.siteVersion);
+        await addStylesheet(`styles.css?v=${version}`);
+        await addScript(`config.js?v=${version}`);
+        await addScript(`msal-browser.min.js?v=${version}`);
+        await addScript(`app.js?v=${version}`);
+      })().catch(showLoaderError);
+    })();
+  </script>
 </body>
 </html>

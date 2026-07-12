@@ -13,6 +13,12 @@
     "bootstrapUri": {
       "type": "string",
       "defaultValue": "https://raw.githubusercontent.com/seanwest1-flatiron/azure-test/main/runbooks/bootstrap.ps1"
+    },
+    "runnerVersion": {
+      "type": "string",
+      "metadata": {
+        "description": "Version of the bootstrap runbook deployed by After Party Labs."
+      }
     }
   },
   "resources": [
@@ -22,7 +28,8 @@
       "name": "[parameters('automationAccountName')]",
       "location": "[resourceGroup().location]",
       "tags": {
-        "after-party-runner": "true"
+        "after-party-runner": "true",
+        "after-party-runner-version": "[parameters('runnerVersion')]"
       },
       "identity": {
         "type": "SystemAssigned"

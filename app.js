@@ -10,11 +10,12 @@
   const GRAPH_SCOPES = ["Application.Read.All", "AppRoleAssignment.ReadWrite.All"];
   const RUNNER_STORAGE_KEY = "afterParty.runner.v2";
   const PENDING_OPERATION_KEY = "afterParty.pendingOperation.v1";
+  const JOB_POLL_INTERVAL_MS = 1000;
   const apiVersions = Object.freeze({ resources: "2021-04-01", deployments: "2022-09-01", automation: "2024-10-23" });
   const el = Object.fromEntries([
     "configuration-warning", "status", "sign-in", "sign-out", "account", "authorization", "authorize-azure",
     "subscription", "resource-group", "environment-status", "install", "run", "run-file-share", "run-email-triage",
-    "run-customer-payment-export", "run-external-email", "run-tenant-seed", "email-job-status", "file-share-job-status", "message-batch-job-status", "payment-export-job-status", "external-email-job-status", "tenant-seed-job-status"
+    "run-customer-payment-export", "run-external-email", "run-tenant-seed", "email-job-status", "file-share-job-status", "message-batch-job-status", "payment-export-job-status", "external-email-job-status", "tenant-seed-job-status", "diagnostics"
   ].map(id => [id, document.getElementById(id)]));
   let msalClient;
   let account;
@@ -103,6 +104,18 @@
   function storeRunner(runner) {
     activeRunner = runner;
     localStorage.setItem(RUNNER_STORAGE_KEY, JSON.stringify(runner));
+    setDiagnostics();
+  }
+
+  function buildVersion(key) {
+    return window.AFTER_PARTY_BUILD?.[key] || "unknown";
+  }
+
+  function setDiagnostics() {
+    if (!el.diagnostics) return;
+    const runner = currentRunner();
+    const runnerVersion = runner?.runnerVersion || "not detected";
+    el.diagnostics.textContent = `Site version: ${buildVersion("siteVersion")} · Current runner version: ${buildVersion("runnerVersion")} · Detected runner version: ${runnerVersion}`;
   }
 
   function refreshControls() {
@@ -126,6 +139,7 @@
     }).forEach(([operation, button]) => {
       if (button) button.disabled = busy || !signedIn || !ready || activeOperations.size > 0;
     });
+    setDiagnostics();
   }
 
   function noteAuthorized(scopes) {
@@ -250,7 +264,7 @@
     for (const candidate of candidates) {
       try {
         await arm(`${accountPath(subscriptionId, resourceGroup, candidate.name)}/runbooks/${encodeURIComponent(config.runbookName)}?api-version=${apiVersions.automation}`);
-        const runner = { tenantId: account.tenantId, subscriptionId, resourceGroup, automationAccountName: candidate.name, runbookName: config.runbookName };
+        const runner = { tenantId: account.tenantId, subscriptionId, resourceGroup, automationAccountName: candidate.name, runbookName: config.runbookName, runnerVersion: candidate.tags?.["after-party-runner-version"] || "unknown (update environment to record version)" };
         storeRunner(runner);
         setEnvironment(`Ready — using the existing After Party Automation account “${candidate.name}”. No setup is required when you return.`, "ready");
         refreshControls();
@@ -332,18 +346,19 @@
       await token(GRAPH_SCOPES, "install");
       setStatus(`Configuring the After Party Automation account “${automationAccountName}”…`);
       await arm(`/subscriptions/${encodeURIComponent(subscriptionId)}/providers/Microsoft.Automation/register?api-version=${apiVersions.resources}`, { method: "POST" });
-      const template = await requestJson("azuredeploy.json", { cache: "no-store" });
+      const template = await requestJson(`azuredeploy.json?v=${encodeURIComponent(buildVersion("runnerVersion"))}`, { cache: "no-store" });
       const deploymentName = `after-party-${Date.now()}`;
       const deploymentPath = `/subscriptions/${encodeURIComponent(subscriptionId)}/resourcegroups/${encodeURIComponent(resourceGroup)}/providers/Microsoft.Resources/deployments/${deploymentName}?api-version=${apiVersions.deployments}`;
       await arm(deploymentPath, { method: "PUT", body: JSON.stringify({ properties: { mode: "Incremental", template, parameters: {
         automationAccountName: { value: automationAccountName },
-        bootstrapUri: { value: `${config.repositoryRawBase}/runbooks/bootstrap.ps1` }
+        bootstrapUri: { value: `${config.repositoryRawBase}/runbooks/bootstrap.ps1?version=${encodeURIComponent(buildVersion("runnerVersion"))}` },
+        runnerVersion: { value: buildVersion("runnerVersion") }
       } } }) });
       const deployment = await waitForDeployment(deploymentPath);
       const principalId = deployment.properties.outputs?.managedIdentityPrincipalId?.value;
       if (!principalId) throw new Error("Deployment succeeded but did not return the managed identity principal ID.");
       await grantApplicationPermissions(principalId);
-      storeRunner({ tenantId: account.tenantId, subscriptionId, resourceGroup, automationAccountName, runbookName: config.runbookName });
+      storeRunner({ tenantId: account.tenantId, subscriptionId, resourceGroup, automationAccountName, runbookName: config.runbookName, runnerVersion: buildVersion("runnerVersion") });
       setEnvironment(`Ready — using the After Party Automation account “${automationAccountName}”.`, "ready");
       setStatus("Environment is ready.", "success");
     } finally {
@@ -375,7 +390,7 @@
 
   async function pollJob(jobPath, statusElement, label, jobId, operation) {
     try {
-      for (let attempt = 0; attempt < 200; attempt += 1) {
+      for (let attempt = 0; attempt < 600; attempt += 1) {
         const job = await arm(`${jobPath}?api-version=${apiVersions.automation}`);
         const status = jobState(job.properties?.status);
         if (status === "Completed") {
@@ -389,9 +404,9 @@
           setJobStatus(statusElement, `${label}: ${status.toLowerCase()}.`, "error", detail);
           return;
         }
-        const dots = ".".repeat((attempt % 3) + 1);
-        setJobStatus(statusElement, `${label}: ${status.toLowerCase()}${dots} Job ID: ${jobId}`);
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        const spinner = ["◐", "◓", "◑", "◒"][attempt % 4];
+        setJobStatus(statusElement, `${spinner} ${label}: ${status.toLowerCase()}… Job ID: ${jobId}`, status.toLowerCase());
+        await new Promise(resolve => setTimeout(resolve, JOB_POLL_INTERVAL_MS));
       }
       setJobStatus(statusElement, `${label}: status refresh timed out after 10 minutes. The button is available again; check the Automation account before starting another job.`, "error");
     } finally {
@@ -414,7 +429,7 @@
       await token([ARM_SCOPE], operation);
       const jobId = crypto.randomUUID();
       const jobPath = `${accountPath(runner.subscriptionId, runner.resourceGroup, runner.automationAccountName)}/jobs/${jobId}`;
-      setJobStatus(statusElement, `${label}: queued… Job ID: ${jobId}`);
+      setJobStatus(statusElement, `◐ ${label}: queued… Job ID: ${jobId}`, "queued");
       await arm(`${jobPath}?api-version=${apiVersions.automation}`, { method: "PUT", body: JSON.stringify({ properties: { runbook: { name: runner.runbookName }, parameters: { LabPath: payloadPath } } }) });
       jobStarted = true;
       void pollJob(jobPath, statusElement, label, jobId, operation).catch(error => setJobStatus(statusElement, `${label}: unable to refresh status.`, "error", explainError(error)));

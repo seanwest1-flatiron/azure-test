@@ -28,6 +28,13 @@ the ARM REST API. The installed bootstrap runbook downloads the selected script
 under `payloads/` from the `main` branch for each job, so ordinary payload changes do not
 require runner reinstallation.
 
+`version.json` is the release manifest. On every page load, the browser fetches
+it without using the cache and uses its site version for the application assets.
+The bootstrap runbook uses its payload version for runtime files. Bump all three
+versions when publishing a change; select **Update environment** only when the
+bootstrap runbook or its permissions need to change. The Diagnostics section
+shows the loaded site version, current runner version, and detected runner tag.
+
 The initial email operation sends from `kobe@corywest.onmicrosoft.com` to
 `cory@corywest.onmicrosoft.com`.
 
@@ -51,6 +58,7 @@ isolated tenant before using this design elsewhere.
 - `payloads/send-external-email.ps1`: sends an external email
 - `payloads/tenant-seed.json`: source of truth for the tenant seed
 - `payloads/seed-tenant.ps1`: creates or updates seeded users, membership, and licenses
+- `version.json`: cache-busting site, runner, and payload release versions
 
 To have Purview apply a DLP action to the payment export, configure an Exchange
 DLP policy for external recipients that detects the Credit Card Number sensitive

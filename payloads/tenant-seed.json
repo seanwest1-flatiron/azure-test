@@ -1,13 +1,15 @@
 {
   "group": {
-    "displayName": "After Party All Employees",
-    "mailNickname": "afterpartyallemployees"
+    "displayName": "All Employees",
+    "mailNickname": "allemployees",
+    "legacyDisplayNames": ["After Party All Employees"]
   },
-  "licenses": [
-    { "displayName": "Microsoft 365 Business Premium", "skuPartNumberCandidates": ["SPB", "O365_BUSINESS_PREMIUM", "M365_BUSINESS_PREMIUM", "Microsoft_365_Business_Premium", "Office_365_w/o_Teams_Bundle_Business_Premium"] },
-    { "displayName": "Microsoft Defender Suite for Business Premium", "skuPartNumberCandidates": ["DEFENDER_SUITE_BUSINESS_PREMIUM", "DEFENDER_SUITE_BIZ_PREMIUM", "Microsoft_Defender_Suite_for_Business_Premium"] },
-    { "displayName": "Microsoft Purview Suite for Business Premium", "skuPartNumberCandidates": ["PURVIEW_SUITE_BUSINESS_PREMIUM", "PURVIEW_SUITE_BIZ_PREMIUM", "Microsoft_Purview_Suite_for_Business_Premium"] }
-  ],
+  "licenses": {
+    "businessPremium": { "displayName": "Microsoft 365 Business Premium", "skuPartNumberCandidates": ["SPB", "O365_BUSINESS_PREMIUM", "M365_BUSINESS_PREMIUM", "Microsoft_365_Business_Premium", "Office_365_w/o_Teams_Bundle_Business_Premium"] },
+    "combinedDefenderAndPurview": { "displayName": "Microsoft Defender and Purview Suites for Business Premium", "skuPartNumberCandidates": ["DEFENDER_AND_PURVIEW_SUITES_FOR_BUSINESS_PREMIUM_NEW", "DEFENDER_AND_PURVIEW_SUITES_FOR_BUSINESS_PREMIUM"] },
+    "defender": { "displayName": "Microsoft Defender Suite for Business Premium", "skuPartNumberCandidates": ["DEFENDER_SUITE_BUSINESS_PREMIUM", "DEFENDER_SUITE_BIZ_PREMIUM", "Microsoft_Defender_Suite_for_Business_Premium"] },
+    "purview": { "displayName": "Microsoft Purview Suite for Business Premium", "skuPartNumberCandidates": ["PURVIEW_SUITE_BUSINESS_PREMIUM", "PURVIEW_SUITE_BIZ_PREMIUM", "Microsoft_Purview_Suite_for_Business_Premium"] }
+  },
   "users": [
     { "userPrincipalName": "cory@corywest.onmicrosoft.com", "displayName": "Cory West", "givenName": "Cory", "surname": "West", "jobTitle": "Chief Executive Officer", "department": "Executive Office", "mailNickname": "cory" },
     { "userPrincipalName": "kobe@corywest.onmicrosoft.com", "displayName": "Kobe Bryant", "givenName": "Kobe", "surname": "Bryant", "jobTitle": "Chief Operating Officer", "department": "Executive Office", "mailNickname": "kobe" },
