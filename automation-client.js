@@ -46,11 +46,11 @@
     return null;
   }
 
-  async function startJob({ requestJson, runner, payloadPath, jobId }) {
+  async function startJob({ requestJson, runner, payloadPath, jobId, parameters = {} }) {
     const path = `${accountPath(runner.subscriptionId, runner.resourceGroup, runner.automationAccountName)}/jobs/${jobId}`;
     await requestJson(`${path}?api-version=${API_VERSION}`, {
       method: "PUT",
-      body: JSON.stringify({ properties: { runbook: { name: runner.runbookName }, parameters: { LabPath: payloadPath } } })
+      body: JSON.stringify({ properties: { runbook: { name: runner.runbookName }, parameters: { LabPath: payloadPath, ...parameters } } })
     });
     return { jobId, jobPath: path };
   }

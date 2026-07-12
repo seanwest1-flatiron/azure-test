@@ -16,7 +16,7 @@
   const el = Object.fromEntries([
     "configuration-warning", "status", "sign-in", "sign-out", "account", "authorization", "authorize-azure",
     "subscription", "resource-group", "environment-status", "install", "run", "run-file-share", "run-email-triage",
-    "run-customer-payment-export", "run-external-email", "run-tenant-seed", "run-failed-sign-in", "email-job-status", "file-share-job-status", "message-batch-job-status", "payment-export-job-status", "external-email-job-status", "tenant-seed-job-status", "failed-sign-in-job-status", "diagnostics"
+    "run-customer-payment-export", "run-external-email", "run-tenant-seed", "run-failed-sign-in", "run-browser-failed-sign-in", "email-job-status", "file-share-job-status", "message-batch-job-status", "payment-export-job-status", "external-email-job-status", "tenant-seed-job-status", "failed-sign-in-job-status", "browser-failed-sign-in-job-status", "diagnostics"
   ].map(id => [id, document.getElementById(id)]));
   let msalClient;
   let account;
@@ -156,7 +156,8 @@
       sendCustomerPaymentExport: el["run-customer-payment-export"],
       sendExternalEmail: el["run-external-email"],
       seedTenant: el["run-tenant-seed"],
-      failedSignIn: el["run-failed-sign-in"]
+      failedSignIn: el["run-failed-sign-in"],
+      browserFailedSignIn: el["run-browser-failed-sign-in"]
     }).forEach(([operation, button]) => {
       if (button) button.disabled = busy || !signedIn || !ready || activeOperations.size > 0;
     });
@@ -372,6 +373,7 @@
       await token(GRAPH_SCOPES, "install");
       setStatus(`Configuring the After Party Automation account “${automationAccountName}”…`);
       await arm(`/subscriptions/${encodeURIComponent(subscriptionId)}/providers/Microsoft.Automation/register?api-version=${apiVersions.resources}`, { method: "POST" });
+      await arm(`/subscriptions/${encodeURIComponent(subscriptionId)}/providers/Microsoft.ContainerInstance/register?api-version=${apiVersions.resources}`, { method: "POST" });
       const template = await requestJson(`azuredeploy.json?v=${encodeURIComponent(buildVersion("runnerVersion"))}`, { cache: "no-store" });
       const deploymentName = `after-party-${Date.now()}`;
       const deploymentPath = `/subscriptions/${encodeURIComponent(subscriptionId)}/resourcegroups/${encodeURIComponent(resourceGroup)}/providers/Microsoft.Resources/deployments/${deploymentName}?api-version=${apiVersions.deployments}`;
@@ -419,7 +421,7 @@
     }
   }
 
-  async function runOperation(payloadPath, operation, label, statusElement) {
+  async function runOperation(payloadPath, operation, label, statusElement, parameters = {}) {
     const runner = currentRunner();
     if (!runner) throw new Error("Select a resource group with a ready After Party environment first.");
     if (activeOperations.has(operation)) {
@@ -432,8 +434,11 @@
     try {
       await token([ARM_SCOPE], operation);
       const jobId = crypto.randomUUID();
+      const jobParameters = operation === "browserFailedSignIn"
+        ? { ...parameters, SubscriptionId: runner.subscriptionId, ResourceGroup: runner.resourceGroup }
+        : parameters;
       setJobStatus(statusElement, `◐ ${label}: queued… Job ID: ${jobId}`, "queued");
-      const { jobPath } = await automation.startJob({ requestJson: (path, options = {}) => arm(path, options), runner, payloadPath, jobId });
+      const { jobPath } = await automation.startJob({ requestJson: (path, options = {}) => arm(path, options), runner, payloadPath, jobId, parameters: jobParameters });
       jobStarted = true;
       void pollJob(jobPath, statusElement, label, jobId, operation).catch(error => setJobStatus(statusElement, `${label}: unable to refresh status.`, "error", explainError(error)));
     } finally {
@@ -494,6 +499,9 @@
       case "failedSignIn":
         await runOperation("payloads/failed-sign-in.ps1", "failedSignIn", "Failed sign-in", el["failed-sign-in-job-status"]);
         return;
+      case "browserFailedSignIn":
+        await runOperation("payloads/browser-failed-sign-in.ps1", "browserFailedSignIn", "Browser failed sign-in", el["browser-failed-sign-in-job-status"]);
+        return;
     }
   }
 
@@ -550,5 +558,6 @@
   bind("run-external-email", "click", () => handleAction(() => runOperation("payloads/send-external-email.ps1", "sendExternalEmail", "External email", el["external-email-job-status"])));
   bind("run-tenant-seed", "click", () => handleAction(() => runOperation("payloads/seed-tenant.ps1", "seedTenant", "Tenant preparation", el["tenant-seed-job-status"])));
   bind("run-failed-sign-in", "click", () => handleAction(() => runOperation("payloads/failed-sign-in.ps1", "failedSignIn", "Failed sign-in", el["failed-sign-in-job-status"])));
+  bind("run-browser-failed-sign-in", "click", () => handleAction(() => runOperation("payloads/browser-failed-sign-in.ps1", "browserFailedSignIn", "Browser failed sign-in", el["browser-failed-sign-in-job-status"])));
   initialize().catch(error => setStatus(explainError(error), "error"));
 })();

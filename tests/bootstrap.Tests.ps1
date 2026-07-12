@@ -29,4 +29,15 @@ Describe 'After Party bootstrap payload URL' {
         $global:AfterPartyDownloadUri | Should -Be $expected
         ($output -contains "Resolved payload URL: $expected") | Should -Be $true
     }
+
+    It 'forwards the selected Azure context only to the browser worker payload' {
+        Mock Invoke-WebRequest {
+            param($Uri)
+            return [pscustomobject]@{ Content = 'param([string] $GraphAccessToken, [string] $SubscriptionId, [string] $ResourceGroup) "Worker context: $SubscriptionId/$ResourceGroup"' }
+        }
+
+        $output = & $bootstrapPath -LabPath 'payloads/browser-failed-sign-in.ps1' -SubscriptionId 'subscription-id' -ResourceGroup 'after-test'
+
+        ($output -contains 'Worker context: subscription-id/after-test') | Should -Be $true
+    }
 }

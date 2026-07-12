@@ -71,9 +71,15 @@ isolated tenant before using this design elsewhere.
 - `payloads/tenant-seed.json`: source of truth for baseline users, departments, groups, memberships, and licenses
 - `payloads/seed-tenant.ps1`: prepares and validates the version-controlled tenant baseline
 - `payloads/failed-sign-in.ps1`: records one expected invalid-credentials sign-in for a seeded non-admin user
+- `payloads/browser-failed-sign-in.ps1`: starts one short-lived Playwright container worker for a browser sign-in failure
+- `payloads/browser-failed-sign-in-worker.mjs`: browser worker downloaded by the short-lived container
 
 The failed-sign-in payload uses its own single-tenant public-client registration;
 it does not enable public-client flows on the browser SPA registration.
+
+The browser failed-sign-in operation uses Azure Container Instances for one
+short-lived Playwright worker. Select **Update environment** once after this
+release so the Automation identity receives the scoped Container Instances role.
 - `version.json`: cache-busting site, runner, and payload release versions
 
 ## Tests and command-line job runner

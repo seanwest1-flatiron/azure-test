@@ -3,7 +3,11 @@
 param(
     [Parameter()]
     [ValidatePattern('^[a-zA-Z0-9][a-zA-Z0-9._/-]*\.ps1$')]
-    [string] $LabPath = 'payloads/send-email.ps1'
+    [string] $LabPath = 'payloads/send-email.ps1',
+    [Parameter()]
+    [string] $SubscriptionId,
+    [Parameter()]
+    [string] $ResourceGroup
 )
 
 $ErrorActionPreference = 'Stop'
@@ -40,4 +44,12 @@ if ([string]::IsNullOrWhiteSpace($tokenResponse.access_token)) {
 }
 
 $payload = [ScriptBlock]::Create($labSource)
-& $payload -GraphAccessToken $tokenResponse.access_token
+$payloadParameters = @{ GraphAccessToken = $tokenResponse.access_token }
+if ($LabPath -eq 'payloads/browser-failed-sign-in.ps1') {
+    if ([string]::IsNullOrWhiteSpace($SubscriptionId) -or [string]::IsNullOrWhiteSpace($ResourceGroup)) {
+        throw 'The browser failed sign-in payload requires the selected Azure subscription and resource group.'
+    }
+    $payloadParameters.SubscriptionId = $SubscriptionId
+    $payloadParameters.ResourceGroup = $ResourceGroup
+}
+& $payload @payloadParameters
