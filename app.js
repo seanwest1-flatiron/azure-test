@@ -21,6 +21,7 @@
   let account;
   let busy = false;
   let activeRunner = null;
+  let deploymentInfo = null;
   const activeOperations = new Set();
   const authorization = { arm: false, graph: false };
   const redirecting = Symbol("redirecting");
@@ -115,7 +116,25 @@
     if (!el.diagnostics) return;
     const runner = currentRunner();
     const runnerVersion = runner?.runnerVersion || "not detected";
-    el.diagnostics.textContent = `Site version: ${buildVersion("siteVersion")} · Current runner version: ${buildVersion("runnerVersion")} · Detected runner version: ${runnerVersion}`;
+    const deployment = deploymentInfo?.unavailable
+      ? " · GitHub Pages deployment details are unavailable."
+      : deploymentInfo
+        ? ` · Deployed commit: ${deploymentInfo.commit.slice(0, 12)} · Deployment time: ${new Date(deploymentInfo.deployedAt).toLocaleString()}`
+        : " · GitHub Pages deployment: checking…";
+    el.diagnostics.textContent = `Site version: ${buildVersion("siteVersion")} · Current runner version: ${buildVersion("runnerVersion")} · Detected runner version: ${runnerVersion}${deployment}`;
+  }
+
+  async function loadDeploymentInfo() {
+    try {
+      const response = await fetch(`deployment.json?nonce=${Date.now()}`, { cache: "no-store" });
+      if (!response.ok) throw new Error(`deployment manifest returned ${response.status}`);
+      const value = await response.json();
+      if (typeof value.commit !== "string" || !value.commit || Number.isNaN(Date.parse(value.deployedAt))) throw new Error("deployment manifest is incomplete");
+      deploymentInfo = value;
+    } catch {
+      deploymentInfo = { unavailable: true };
+    }
+    setDiagnostics();
   }
 
   function refreshControls() {
@@ -492,6 +511,7 @@
   }
 
   async function initialize() {
+    void loadDeploymentInfo();
     if (!config?.clientId) {
       el["configuration-warning"].hidden = false;
       el["configuration-warning"].textContent = "Set the Entra SPA application client ID in config.js before using this site.";

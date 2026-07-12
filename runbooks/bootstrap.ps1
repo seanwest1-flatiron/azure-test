@@ -12,10 +12,8 @@ $manifest = Invoke-RestMethod -Method GET -Uri "$repositoryBase/version.json?non
 if ([string]::IsNullOrWhiteSpace([string]$manifest.payloadVersion)) {
     throw 'The After Party version manifest did not contain a payload version.'
 }
-$payloadUri = [Uri]("$repositoryBase/$LabPath")
-$payloadUriBuilder = [System.UriBuilder]$payloadUri
-$payloadUriBuilder.Query = "version=$([Uri]::EscapeDataString([string]$manifest.payloadVersion))"
-$labUri = $payloadUriBuilder.Uri
+$payloadUrl = "$repositoryBase/${LabPath}?version=$([Uri]::EscapeDataString([string]$manifest.payloadVersion))"
+$labUri = [Uri]$payloadUrl
 
 if ($labUri.Scheme -ne 'https' -or $labUri.Host -ne 'raw.githubusercontent.com') {
     throw 'The payload URI is not an approved HTTPS GitHub raw-content URI.'

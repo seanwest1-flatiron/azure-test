@@ -35,6 +35,17 @@ versions when publishing a change; select **Update environment** only when the
 bootstrap runbook or its permissions need to change. The Diagnostics section
 shows the loaded site version, current runner version, and detected runner tag.
 
+## GitHub Pages publishing
+
+`.github/workflows/deploy-pages.yml` builds the static Pages artifact and writes
+`deployment.json` into that artifact immediately before deployment. The browser
+fetches that manifest with a unique cache-busting query value and displays the
+commit and deployment time in Diagnostics, so those values describe the artifact
+being served rather than the repository head.
+
+In **Settings → Pages**, select **GitHub Actions** as the publishing source once.
+The custom workflow then deploys every push to `main`.
+
 The initial email operation sends from `kobe@corywest.onmicrosoft.com` to
 `cory@corywest.onmicrosoft.com`.
 
