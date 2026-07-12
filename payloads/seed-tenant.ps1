@@ -121,22 +121,21 @@ function Get-SeedUser {
         $profile = @{
             displayName = $SeedUser.displayName
             givenName = $SeedUser.givenName
-            surname = $SeedUser.surname
             jobTitle = $SeedUser.jobTitle
             department = $SeedUser.department
             usageLocation = 'US'
         }
+        if (-not [string]::IsNullOrWhiteSpace([string]$SeedUser.surname)) { $profile.surname = $SeedUser.surname }
         Invoke-Graph -Method PATCH -Path "/users/$($user.id)" -Body $profile | Out-Null
         return @{ User = $user; Created = $false }
     } catch {
         if ((Get-GraphStatusCode -ErrorRecord $_) -ne 404) { throw }
     }
 
-    $newUser = Invoke-Graph -Method POST -Path '/users' -Body @{
+    $newUserProperties = @{
         accountEnabled = $true
         displayName = $SeedUser.displayName
         givenName = $SeedUser.givenName
-        surname = $SeedUser.surname
         jobTitle = $SeedUser.jobTitle
         department = $SeedUser.department
         usageLocation = 'US'
@@ -144,6 +143,8 @@ function Get-SeedUser {
         userPrincipalName = $SeedUser.userPrincipalName
         passwordProfile = @{ password = (New-TemporaryPassword); forceChangePasswordNextSignIn = $true }
     }
+    if (-not [string]::IsNullOrWhiteSpace([string]$SeedUser.surname)) { $newUserProperties.surname = $SeedUser.surname }
+    $newUser = Invoke-Graph -Method POST -Path '/users' -Body $newUserProperties
     return @{ User = $newUser; Created = $true }
 }
 

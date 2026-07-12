@@ -47,6 +47,9 @@ Describe 'Tenant seed license SKU matching' {
                 return [pscustomobject]@{}
             }
             if ($Uri -like 'https://graph.microsoft.com/v1.0/groups/group-id/members?*') { return [pscustomobject]@{ value = @() } }
+            if ($Uri -like 'https://graph.microsoft.com/v1.0/users/socky*' -and $Method -eq 'GET') { return [pscustomobject]@{ id = 'socky-id'; userPrincipalName = 'socky@corywest.onmicrosoft.com' } }
+            if ($Uri -eq 'https://graph.microsoft.com/v1.0/users/socky-id' -and $Method -eq 'PATCH') { return [pscustomobject]@{} }
+            if ($Uri -eq 'https://graph.microsoft.com/v1.0/groups/group-id/members/$ref' -and $Method -eq 'POST') { return [pscustomobject]@{} }
             throw "Unexpected REST request: $Method $Uri"
         }
     }
@@ -68,5 +71,26 @@ Describe 'Tenant seed license SKU matching' {
         $global:AfterPartyGraphFailure = $true
 
         { & $seedScriptPath -GraphAccessToken $graphAccessToken } | Should -Throw '*GET https://graph.microsoft.com/v1.0/subscribedSkus; HTTP 403; code: Authorization_RequestDenied; message: Insufficient privileges to complete the operation.*'
+    }
+
+    It 'omits an empty optional surname when updating a user' {
+        $global:AfterPartyTestSeed.users = @([pscustomobject]@{
+            userPrincipalName = 'socky@corywest.onmicrosoft.com'
+            displayName = 'Socky'
+            givenName = 'Socky'
+            surname = ''
+            jobTitle = 'Systems Support Analyst'
+            department = 'Corporate Services'
+            mailNickname = 'socky'
+        })
+
+        & $seedScriptPath -GraphAccessToken $graphAccessToken
+
+        Should -Invoke Invoke-RestMethod -Times 1 -ParameterFilter {
+            $Uri -eq 'https://graph.microsoft.com/v1.0/users/socky-id' -and
+            $Method -eq 'PATCH' -and
+            $Body -match '"displayName"\s*:\s*"Socky"' -and
+            $Body -notmatch '"surname"'
+        }
     }
 }
