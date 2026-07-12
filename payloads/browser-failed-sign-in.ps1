@@ -52,13 +52,13 @@ $tenantId = Get-JwtClaim -AccessToken $GraphAccessToken -Name 'tid'
 if ([string]::IsNullOrWhiteSpace($tenantId)) { throw 'The managed identity Graph access token did not contain a tenant ID.' }
 $armAccessToken = Get-ArmAccessToken
 $resourceGroupPath = "/subscriptions/$([Uri]::EscapeDataString($SubscriptionId))/resourcegroups/$([Uri]::EscapeDataString($ResourceGroup))"
-$resourceGroup = Invoke-Arm -Method GET -Path "${resourceGroupPath}?api-version=2021-04-01"
+$resourceGroupDetails = Invoke-Arm -Method GET -Path "${resourceGroupPath}?api-version=2021-04-01"
 $workerName = "after-party-browser-$([Guid]::NewGuid().ToString('N').Substring(0, 12))"
 $containerPath = "$resourceGroupPath/providers/Microsoft.ContainerInstance/containerGroups/$workerName"
 $workerUri = "$repositoryBase/payloads/browser-failed-sign-in-worker.mjs?version=$([Uri]::EscapeDataString($payloadVersion))"
 $command = "set -eu; mkdir -p /work; cd /work; PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install --silent --no-audit --no-fund --no-save playwright@1.61.0; curl --fail --silent --show-error '$workerUri' --output worker.mjs; node worker.mjs"
 $containerGroup = @{
-    location = $resourceGroup.location
+    location = $resourceGroupDetails.location
     properties = @{
         osType = 'Linux'
         restartPolicy = 'Never'

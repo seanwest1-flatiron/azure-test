@@ -41,6 +41,7 @@ Describe 'Browser failed sign-in payload' {
         $output = & $payloadPath -GraphAccessToken $graphAccessToken -SubscriptionId 'subscription-id' -ResourceGroup 'after-test'
 
         $global:AfterPartyContainerRequest.properties.restartPolicy | Should -Be 'Never'
+        $global:AfterPartyContainerRequest.location | Should -Be 'eastus'
         $global:AfterPartyContainerRequest.properties.containers[0].properties.image | Should -Be 'mcr.microsoft.com/playwright:v1.61.0-noble'
         ($output -match 'Browser failed sign-in confirmed for lisa.simpson@corywest.onmicrosoft.com') | Should -Be $true
         Should -Invoke Invoke-RestMethod -Times 1 -ParameterFilter { $Method -eq 'PUT' -and ([string]$Uri) -match 'Microsoft.ContainerInstance/containerGroups' }

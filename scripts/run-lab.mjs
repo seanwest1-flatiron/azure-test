@@ -68,7 +68,10 @@ async function main() {
 
   const jobId = randomUUID();
   console.error(`Starting ${args.lab} in ${runner.automationAccountName}. Job ID: ${jobId}`);
-  const { jobPath } = await automation.startJob({ requestJson, runner, payloadPath: args.lab, jobId });
+  const parameters = args.lab === "payloads/browser-failed-sign-in.ps1"
+    ? { SubscriptionId: subscriptionId, ResourceGroup: args["resource-group"] }
+    : {};
+  const { jobPath } = await automation.startJob({ requestJson, runner, payloadPath: args.lab, jobId, parameters });
   let lastStatus;
   const result = await automation.waitForJob({
     requestJson,
