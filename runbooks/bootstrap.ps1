@@ -12,7 +12,10 @@ $manifest = Invoke-RestMethod -Method GET -Uri "$repositoryBase/version.json?non
 if ([string]::IsNullOrWhiteSpace([string]$manifest.payloadVersion)) {
     throw 'The After Party version manifest did not contain a payload version.'
 }
-$labUri = [Uri]("$repositoryBase/$LabPath?version=$([Uri]::EscapeDataString([string]$manifest.payloadVersion))")
+$payloadUri = [Uri]("$repositoryBase/$LabPath")
+$payloadUriBuilder = [System.UriBuilder]$payloadUri
+$payloadUriBuilder.Query = "version=$([Uri]::EscapeDataString([string]$manifest.payloadVersion))"
+$labUri = $payloadUriBuilder.Uri
 
 if ($labUri.Scheme -ne 'https' -or $labUri.Host -ne 'raw.githubusercontent.com') {
     throw 'The payload URI is not an approved HTTPS GitHub raw-content URI.'
@@ -20,6 +23,7 @@ if ($labUri.Scheme -ne 'https' -or $labUri.Host -ne 'raw.githubusercontent.com')
 
 Write-Output "Runner version: $($manifest.runnerVersion)"
 Write-Output "Downloading current payload: $LabPath"
+Write-Output "Resolved payload URL: $($labUri.AbsoluteUri)"
 $labSource = (Invoke-WebRequest -Uri $labUri.AbsoluteUri -UseBasicParsing).Content
 if ([string]::IsNullOrWhiteSpace($labSource)) {
     throw 'The downloaded payload was empty.'
