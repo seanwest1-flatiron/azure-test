@@ -14,12 +14,13 @@
   const el = Object.fromEntries([
     "configuration-warning", "status", "sign-in", "sign-out", "account", "authorization", "authorize-azure",
     "subscription", "resource-group", "environment-status", "install", "run", "run-file-share", "run-email-triage",
-    "run-customer-payment-export", "email-job-status", "file-share-job-status", "message-batch-job-status", "payment-export-job-status"
+    "run-customer-payment-export", "run-external-email", "email-job-status", "file-share-job-status", "message-batch-job-status", "payment-export-job-status", "external-email-job-status"
   ].map(id => [id, document.getElementById(id)]));
   let msalClient;
   let account;
   let busy = false;
   let activeRunner = null;
+  const activeOperations = new Set();
   const authorization = { arm: false, graph: false };
   const redirecting = Symbol("redirecting");
 
@@ -115,8 +116,14 @@
     el["resource-group"].disabled = busy || !signedIn || !el.subscription.value;
     el.install.disabled = busy || !signedIn || !environmentSelected;
     el.install.textContent = ready ? "Update environment" : "Set up environment";
-    [el.run, el["run-file-share"], el["run-email-triage"], el["run-customer-payment-export"]].filter(Boolean).forEach(button => {
-      button.disabled = busy || !signedIn || !ready;
+    Object.entries({
+      sendEmail: el.run,
+      shareOneDriveFile: el["run-file-share"],
+      sendMessageBatch: el["run-email-triage"],
+      sendCustomerPaymentExport: el["run-customer-payment-export"],
+      sendExternalEmail: el["run-external-email"]
+    }).forEach(([operation, button]) => {
+      if (button) button.disabled = busy || !signedIn || !ready || activeOperations.size > 0;
     });
   }
 
@@ -272,10 +279,28 @@
     const result = await graph(`/servicePrincipals?$filter=${encodeURIComponent(`appId eq '${GRAPH_APP_ID}'`)}&$select=id,appRoles`);
     const graphPrincipal = result.value?.[0];
     if (!graphPrincipal) throw new Error("Microsoft Graph service principal was not found in this tenant.");
+    const assignments = await getExistingApplicationAssignments(principalId);
+    const existingRoleIds = new Set((assignments.value || [])
+      .filter(assignment => assignment.resourceId?.toLowerCase() === graphPrincipal.id.toLowerCase())
+      .map(assignment => assignment.appRoleId));
     for (const roleValue of APPLICATION_ROLES) {
       const appRole = graphPrincipal.appRoles?.find(role => role.value === roleValue && role.isEnabled && role.allowedMemberTypes?.includes("Application"));
       if (!appRole) throw new Error(`Microsoft Graph ${roleValue} application role was not found in this tenant.`);
+      if (existingRoleIds.has(appRole.id)) continue;
       await grantApplicationRole(graphPrincipal, appRole, principalId);
+    }
+  }
+
+  async function getExistingApplicationAssignments(principalId) {
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      try {
+        return await graph(`/servicePrincipals/${principalId}/appRoleAssignments?$select=appRoleId,resourceId`);
+      } catch (error) {
+        const identityNotReady = error.status === 404 && /(principal|service principal|not found)/i.test(explainError(error));
+        if (!identityNotReady || attempt === 29) throw error;
+        setStatus("Waiting for the new managed identity to appear in Microsoft Entra…");
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
     }
   }
 
@@ -347,40 +372,57 @@
     return [...new Set(parts)].join("\n");
   }
 
-  async function pollJob(jobPath, statusElement, label, jobId) {
-    for (let attempt = 0; attempt < 200; attempt += 1) {
-      const job = await arm(`${jobPath}?api-version=${apiVersions.automation}`);
-      const status = jobState(job.properties?.status);
-      if (status === "Completed") {
-        const output = await getJobDetails(jobPath, job);
-        setJobStatus(statusElement, `${label}: completed.`, "success", output || "The operation completed successfully.");
-        return;
+  async function pollJob(jobPath, statusElement, label, jobId, operation) {
+    try {
+      for (let attempt = 0; attempt < 200; attempt += 1) {
+        const job = await arm(`${jobPath}?api-version=${apiVersions.automation}`);
+        const status = jobState(job.properties?.status);
+        if (status === "Completed") {
+          const output = await getJobDetails(jobPath, job);
+          setJobStatus(statusElement, `${label}: completed.`, "success", output || "The operation completed successfully.");
+          return;
+        }
+        if (["Failed", "Stopped", "Blocked", "Suspended", "Disconnected"].includes(status)) {
+          const output = await getJobDetails(jobPath, job);
+          const detail = output || job.properties?.statusDetails || "Azure Automation did not provide additional details.";
+          setJobStatus(statusElement, `${label}: ${status.toLowerCase()}.`, "error", detail);
+          return;
+        }
+        const dots = ".".repeat((attempt % 3) + 1);
+        setJobStatus(statusElement, `${label}: ${status.toLowerCase()}${dots} Job ID: ${jobId}`);
+        await new Promise(resolve => setTimeout(resolve, 3000));
       }
-      if (["Failed", "Stopped", "Blocked", "Suspended", "Disconnected"].includes(status)) {
-        const output = await getJobDetails(jobPath, job);
-        const detail = output || job.properties?.statusDetails || "Azure Automation did not provide additional details.";
-        setJobStatus(statusElement, `${label}: ${status.toLowerCase()}.`, "error", detail);
-        return;
-      }
-      setJobStatus(statusElement, `${label}: ${status.toLowerCase()}… Job ID: ${jobId}`);
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      setJobStatus(statusElement, `${label}: status refresh timed out after 10 minutes. The button is available again; check the Automation account before starting another job.`, "error");
+    } finally {
+      activeOperations.delete(operation);
+      refreshControls();
     }
-    setJobStatus(statusElement, `${label}: status refresh timed out. Check the Automation account if it is still running.`, "error");
   }
 
   async function runOperation(payloadPath, operation, label, statusElement) {
     const runner = currentRunner();
     if (!runner) throw new Error("Select a resource group with a ready After Party environment first.");
+    if (activeOperations.has(operation)) {
+      setJobStatus(statusElement, `${label} is already in progress.`);
+      return;
+    }
+    activeOperations.add(operation);
     setBusy(true);
+    let jobStarted = false;
     try {
       await token([ARM_SCOPE], operation);
       const jobId = crypto.randomUUID();
       const jobPath = `${accountPath(runner.subscriptionId, runner.resourceGroup, runner.automationAccountName)}/jobs/${jobId}`;
       setJobStatus(statusElement, `${label}: queued… Job ID: ${jobId}`);
       await arm(`${jobPath}?api-version=${apiVersions.automation}`, { method: "PUT", body: JSON.stringify({ properties: { runbook: { name: runner.runbookName }, parameters: { LabPath: payloadPath } } }) });
-      void pollJob(jobPath, statusElement, label, jobId).catch(error => setJobStatus(statusElement, `${label}: unable to refresh status.`, "error", explainError(error)));
+      jobStarted = true;
+      void pollJob(jobPath, statusElement, label, jobId, operation).catch(error => setJobStatus(statusElement, `${label}: unable to refresh status.`, "error", explainError(error)));
     } finally {
       setBusy(false);
+      if (!jobStarted) {
+        activeOperations.delete(operation);
+        refreshControls();
+      }
     }
   }
 
@@ -423,6 +465,10 @@
         return;
       case "sendCustomerPaymentExport":
         await runOperation("payloads/send-customer-payment-export.ps1", "sendCustomerPaymentExport", "Customer payment export", el["payment-export-job-status"]);
+        return;
+      case "sendExternalEmail":
+        await runOperation("payloads/send-external-email.ps1", "sendExternalEmail", "External email", el["external-email-job-status"]);
+        return;
     }
   }
 
@@ -475,5 +521,6 @@
   bind("run-file-share", "click", () => handleAction(() => runOperation("payloads/share-onedrive-file.ps1", "shareOneDriveFile", "OneDrive file sharing", el["file-share-job-status"])));
   bind("run-email-triage", "click", () => handleAction(() => runOperation("payloads/send-message-batch.ps1", "sendMessageBatch", "Message batch", el["message-batch-job-status"])));
   bind("run-customer-payment-export", "click", () => handleAction(() => runOperation("payloads/send-customer-payment-export.ps1", "sendCustomerPaymentExport", "Customer payment export", el["payment-export-job-status"])));
+  bind("run-external-email", "click", () => handleAction(() => runOperation("payloads/send-external-email.ps1", "sendExternalEmail", "External email", el["external-email-job-status"])));
   initialize().catch(error => setStatus(explainError(error), "error"));
 })();

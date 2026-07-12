@@ -48,6 +48,7 @@ isolated tenant before using this design elsewhere.
 - `payloads/share-onedrive-file.ps1`: creates and shares a OneDrive text file
 - `payloads/send-message-batch.ps1`: sends a message batch
 - `payloads/send-customer-payment-export.ps1`: sends a customer payment export
+- `payloads/send-external-email.ps1`: sends an external email
 
 To have Purview apply a DLP action to the payment export, configure an Exchange
 DLP policy for external recipients that detects the Credit Card Number sensitive

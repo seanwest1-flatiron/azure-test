@@ -7,14 +7,13 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $sender = 'kobe@corywest.onmicrosoft.com'
-$recipient = 'cory@corywest.onmicrosoft.com'
-$sendMailUri = "https://graph.microsoft.com/v1.0/users/$sender/sendMail"
+$recipient = 'jonk9980@gmail.com'
 $message = @{
     message = @{
-        subject = 'Invoice reconciliation request'
+        subject = 'Status update'
         body = @{
             contentType = 'Text'
-            content = 'Please review the reconciliation request and reply with any questions.'
+            content = 'Please let me know if you have any questions.'
         }
         toRecipients = @(
             @{ emailAddress = @{ address = $recipient } }
@@ -25,7 +24,7 @@ $message = @{
 
 Invoke-RestMethod `
     -Method POST `
-    -Uri $sendMailUri `
+    -Uri ("https://graph.microsoft.com/v1.0/users/$sender/sendMail") `
     -Headers @{ Authorization = "Bearer $GraphAccessToken" } `
     -ContentType 'application/json' `
     -Body ($message | ConvertTo-Json -Depth 8)

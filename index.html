@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>After Party Labs</title>
-  <link rel="stylesheet" href="styles.css?v=5d4d9fb">
+  <link rel="stylesheet" href="styles.css?v=20260711-operation-progress">
 </head>
 <body>
   <main>
@@ -65,14 +65,21 @@
       <div id="payment-export-job-status" class="job-status" role="status" aria-live="polite" hidden></div>
     </section>
 
+    <section class="card">
+      <div class="section-heading"><div><span class="step">7</span><h2>Send external email</h2></div></div>
+      <p>Sends a message from <code>kobe@corywest.onmicrosoft.com</code> to <code>jonk9980@gmail.com</code>.</p>
+      <button id="run-external-email" type="button" disabled>Send external email</button>
+      <div id="external-email-job-status" class="job-status" role="status" aria-live="polite" hidden></div>
+    </section>
+
     <details>
       <summary>Technical and permission details</summary>
       <p>The installer uses your delegated ARM permissions to create Azure resources and delegated Graph permissions to assign an application role. The runbook receives a Graph token from Azure's managed identity endpoint. Tokens are never stored by this application.</p>
     </details>
   </main>
 
-  <script src="config.js?v=5d4d9fb"></script>
+  <script src="config.js?v=20260711-operation-progress"></script>
   <script src="msal-browser.min.js"></script>
-  <script src="app.js?v=5d4d9fb"></script>
+  <script src="app.js?v=20260711-operation-progress"></script>
 </body>
 </html>
