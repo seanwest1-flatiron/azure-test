@@ -29,7 +29,7 @@
     {
       "displayName": "Security",
       "description": "Security operations, risk management, and incident response.",
-      "mailNickname": "security",
+      "mailNickname": "securityteam",
       "legacyDisplayNames": [],
       "memberUserPrincipalNames": ["homer.simpson@corywest.onmicrosoft.com", "marge.simpson@corywest.onmicrosoft.com", "lisa.simpson@corywest.onmicrosoft.com", "bart.simpson@corywest.onmicrosoft.com"]
     },
