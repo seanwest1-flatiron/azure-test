@@ -15,7 +15,8 @@ Describe 'Tenant seed license SKU matching' {
                 defender = [pscustomobject]@{ displayName = 'Microsoft Defender for Business'; skuPartNumberCandidates = @('DEFENDER_BUSINESS') }
                 purview = [pscustomobject]@{ displayName = 'Microsoft Purview Suite'; skuPartNumberCandidates = @('PURVIEW_SUITE') }
             }
-            group = [pscustomobject]@{ displayName = 'All Employees'; legacyDisplayNames = @(); mailNickname = 'all-employees' }
+            licensingGroup = [pscustomobject]@{ displayName = 'All Employees'; legacyDisplayNames = @(); mailNickname = 'all-employees' }
+            departments = @()
             users = @()
         }
         Mock Invoke-RestMethod {
@@ -40,18 +41,21 @@ Describe 'Tenant seed license SKU matching' {
                     [pscustomobject]@{ skuPartNumber = 'PURVIEW_SUITE'; skuId = 'purview-id' }
                 ) }
             }
-            if ($Uri -like 'https://graph.microsoft.com/v1.0/groups?*') {
-                return [pscustomobject]@{ value = @([pscustomobject]@{ id = 'group-id'; displayName = 'All Employees'; assignedLicenses = @() }) }
+            if (([Uri]$Uri).AbsolutePath -eq '/v1.0/groups') {
+                return [pscustomobject]@{ value = @([pscustomobject]@{ id = 'group-id'; displayName = 'All Employees'; mailNickname = 'all-employees'; groupTypes = @(); assignedLicenses = @() }) }
             }
             if ($Uri -eq 'https://graph.microsoft.com/v1.0/groups/group-id/assignLicense') {
                 return [pscustomobject]@{}
             }
-            if ($Uri -like 'https://graph.microsoft.com/v1.0/groups/group-id/members?*') { return [pscustomobject]@{ value = @() } }
+            if ($Uri -like 'https://graph.microsoft.com/v1.0/groups/group-id/members?*') {
+                return [pscustomobject]@{ value = @([pscustomobject]@{ id = 'socky-id' }) }
+            }
             if ($Uri -like 'https://graph.microsoft.com/v1.0/users/socky*' -and $Method -eq 'GET') { return [pscustomobject]@{ id = 'socky-id'; userPrincipalName = 'socky@corywest.onmicrosoft.com' } }
             if ($Uri -eq 'https://graph.microsoft.com/v1.0/users/socky-id' -and $Method -eq 'PATCH') { return [pscustomobject]@{} }
             if ($Uri -eq 'https://graph.microsoft.com/v1.0/groups/group-id/members/$ref' -and $Method -eq 'POST') { return [pscustomobject]@{} }
             throw "Unexpected REST request: $Method $Uri"
         }
+        Mock Start-Sleep { }
     }
 
     It 'selects SPB and the current combined Defender and Purview suite SKU' {

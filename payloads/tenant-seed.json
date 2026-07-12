@@ -1,9 +1,53 @@
 {
-  "group": {
+  "licensingGroup": {
     "displayName": "All Employees",
     "mailNickname": "allemployees",
     "legacyDisplayNames": ["After Party All Employees"]
   },
+  "departments": [
+    {
+      "displayName": "Executive",
+      "description": "Executive leadership and company operations.",
+      "mailNickname": "executive",
+      "legacyDisplayNames": [],
+      "memberUserPrincipalNames": ["cory@corywest.onmicrosoft.com", "kobe@corywest.onmicrosoft.com"]
+    },
+    {
+      "displayName": "IT",
+      "description": "Technology operations and employee systems support.",
+      "mailNickname": "it",
+      "legacyDisplayNames": [],
+      "memberUserPrincipalNames": ["socky@corywest.onmicrosoft.com"]
+    },
+    {
+      "displayName": "Corporate Services",
+      "description": "Facilities, workplace, and corporate services.",
+      "mailNickname": "corporateservices",
+      "legacyDisplayNames": [],
+      "memberUserPrincipalNames": ["rocky@corywest.onmicrosoft.com"]
+    },
+    {
+      "displayName": "Security",
+      "description": "Security operations, risk management, and incident response.",
+      "mailNickname": "security",
+      "legacyDisplayNames": [],
+      "memberUserPrincipalNames": ["homer.simpson@corywest.onmicrosoft.com", "marge.simpson@corywest.onmicrosoft.com", "lisa.simpson@corywest.onmicrosoft.com", "bart.simpson@corywest.onmicrosoft.com"]
+    },
+    {
+      "displayName": "Finance",
+      "description": "Financial planning, reporting, and business operations.",
+      "mailNickname": "finance",
+      "legacyDisplayNames": [],
+      "memberUserPrincipalNames": ["rachel.green@corywest.onmicrosoft.com", "monica.geller@corywest.onmicrosoft.com", "chandler.bing@corywest.onmicrosoft.com", "ross.geller@corywest.onmicrosoft.com"]
+    },
+    {
+      "displayName": "Human Resources",
+      "description": "People operations, talent programs, and employee relations.",
+      "mailNickname": "humanresources",
+      "legacyDisplayNames": [],
+      "memberUserPrincipalNames": ["jerry.seinfeld@corywest.onmicrosoft.com", "elaine.benes@corywest.onmicrosoft.com", "george.costanza@corywest.onmicrosoft.com", "cosmo.kramer@corywest.onmicrosoft.com"]
+    }
+  ],
   "licenses": {
     "businessPremium": { "displayName": "Microsoft 365 Business Premium", "skuPartNumberCandidates": ["SPB", "O365_BUSINESS_PREMIUM", "M365_BUSINESS_PREMIUM", "Microsoft_365_Business_Premium", "Office_365_w/o_Teams_Bundle_Business_Premium"] },
     "combinedDefenderAndPurview": { "displayName": "Microsoft Defender and Purview Suites for Business Premium", "skuPartNumberCandidates": ["DEFENDER_AND_PURVIEW_SUITES_FOR_BUSINESS_PREMIUM_NEW", "DEFENDER_AND_PURVIEW_SUITES_FOR_BUSINESS_PREMIUM"] },
@@ -11,21 +55,21 @@
     "purview": { "displayName": "Microsoft Purview Suite for Business Premium", "skuPartNumberCandidates": ["PURVIEW_SUITE_BUSINESS_PREMIUM", "PURVIEW_SUITE_BIZ_PREMIUM", "Microsoft_Purview_Suite_for_Business_Premium"] }
   },
   "users": [
-    { "userPrincipalName": "cory@corywest.onmicrosoft.com", "displayName": "Cory West", "givenName": "Cory", "surname": "West", "jobTitle": "Chief Executive Officer", "department": "Executive Office", "mailNickname": "cory" },
-    { "userPrincipalName": "kobe@corywest.onmicrosoft.com", "displayName": "Kobe Bryant", "givenName": "Kobe", "surname": "Bryant", "jobTitle": "Chief Operating Officer", "department": "Executive Office", "mailNickname": "kobe" },
-    { "userPrincipalName": "rocky@corywest.onmicrosoft.com", "displayName": "Rocky Balboa", "givenName": "Rocky", "surname": "Balboa", "jobTitle": "Facilities Manager", "department": "Corporate Services", "mailNickname": "rocky" },
-    { "userPrincipalName": "socky@corywest.onmicrosoft.com", "displayName": "Socky", "givenName": "Socky", "surname": "", "jobTitle": "Systems Support Analyst", "department": "Corporate Services", "mailNickname": "socky" },
-    { "userPrincipalName": "homer.simpson@corywest.onmicrosoft.com", "displayName": "Homer Simpson", "givenName": "Homer", "surname": "Simpson", "jobTitle": "Plant Operations Director", "department": "Springfield Operations", "mailNickname": "homer.simpson" },
-    { "userPrincipalName": "marge.simpson@corywest.onmicrosoft.com", "displayName": "Marge Simpson", "givenName": "Marge", "surname": "Simpson", "jobTitle": "Customer Experience Manager", "department": "Springfield Operations", "mailNickname": "marge.simpson" },
-    { "userPrincipalName": "lisa.simpson@corywest.onmicrosoft.com", "displayName": "Lisa Simpson", "givenName": "Lisa", "surname": "Simpson", "jobTitle": "Business Intelligence Analyst", "department": "Springfield Operations", "mailNickname": "lisa.simpson" },
-    { "userPrincipalName": "bart.simpson@corywest.onmicrosoft.com", "displayName": "Bart Simpson", "givenName": "Bart", "surname": "Simpson", "jobTitle": "Field Services Coordinator", "department": "Springfield Operations", "mailNickname": "bart.simpson" },
-    { "userPrincipalName": "rachel.green@corywest.onmicrosoft.com", "displayName": "Rachel Green", "givenName": "Rachel", "surname": "Green", "jobTitle": "Retail Partnerships Manager", "department": "Central Perk Partnerships", "mailNickname": "rachel.green" },
-    { "userPrincipalName": "monica.geller@corywest.onmicrosoft.com", "displayName": "Monica Geller", "givenName": "Monica", "surname": "Geller", "jobTitle": "Operations Manager", "department": "Central Perk Partnerships", "mailNickname": "monica.geller" },
-    { "userPrincipalName": "chandler.bing@corywest.onmicrosoft.com", "displayName": "Chandler Bing", "givenName": "Chandler", "surname": "Bing", "jobTitle": "Corporate Communications Manager", "department": "Central Perk Partnerships", "mailNickname": "chandler.bing" },
-    { "userPrincipalName": "ross.geller@corywest.onmicrosoft.com", "displayName": "Ross Geller", "givenName": "Ross", "surname": "Geller", "jobTitle": "Research and Insights Manager", "department": "Central Perk Partnerships", "mailNickname": "ross.geller" },
-    { "userPrincipalName": "jerry.seinfeld@corywest.onmicrosoft.com", "displayName": "Jerry Seinfeld", "givenName": "Jerry", "surname": "Seinfeld", "jobTitle": "Creative Director", "department": "New York Client Services", "mailNickname": "jerry.seinfeld" },
-    { "userPrincipalName": "elaine.benes@corywest.onmicrosoft.com", "displayName": "Elaine Benes", "givenName": "Elaine", "surname": "Benes", "jobTitle": "Client Relations Manager", "department": "New York Client Services", "mailNickname": "elaine.benes" },
-    { "userPrincipalName": "george.costanza@corywest.onmicrosoft.com", "displayName": "George Costanza", "givenName": "George", "surname": "Costanza", "jobTitle": "Procurement Manager", "department": "New York Client Services", "mailNickname": "george.costanza" },
-    { "userPrincipalName": "cosmo.kramer@corywest.onmicrosoft.com", "displayName": "Cosmo Kramer", "givenName": "Cosmo", "surname": "Kramer", "jobTitle": "Workplace Services Manager", "department": "New York Client Services", "mailNickname": "cosmo.kramer" }
+    { "userPrincipalName": "cory@corywest.onmicrosoft.com", "displayName": "Cory West", "givenName": "Cory", "surname": "West", "jobTitle": "Chief Executive Officer", "department": "Executive", "mailNickname": "cory" },
+    { "userPrincipalName": "kobe@corywest.onmicrosoft.com", "displayName": "Kobe West", "givenName": "Kobe", "surname": "West", "jobTitle": "Chief Operating Officer", "department": "Executive", "mailNickname": "kobe" },
+    { "userPrincipalName": "rocky@corywest.onmicrosoft.com", "displayName": "Rocky West", "givenName": "Rocky", "surname": "West", "jobTitle": "Facilities Manager", "department": "Corporate Services", "mailNickname": "rocky" },
+    { "userPrincipalName": "socky@corywest.onmicrosoft.com", "displayName": "Socky West", "givenName": "Socky", "surname": "West", "jobTitle": "Systems Support Analyst", "department": "IT", "mailNickname": "socky" },
+    { "userPrincipalName": "homer.simpson@corywest.onmicrosoft.com", "displayName": "Homer Simpson", "givenName": "Homer", "surname": "Simpson", "jobTitle": "Security Operations Director", "department": "Security", "mailNickname": "homer.simpson" },
+    { "userPrincipalName": "marge.simpson@corywest.onmicrosoft.com", "displayName": "Marge Simpson", "givenName": "Marge", "surname": "Simpson", "jobTitle": "Security Program Manager", "department": "Security", "mailNickname": "marge.simpson" },
+    { "userPrincipalName": "lisa.simpson@corywest.onmicrosoft.com", "displayName": "Lisa Simpson", "givenName": "Lisa", "surname": "Simpson", "jobTitle": "Security Analyst", "department": "Security", "mailNickname": "lisa.simpson" },
+    { "userPrincipalName": "bart.simpson@corywest.onmicrosoft.com", "displayName": "Bart Simpson", "givenName": "Bart", "surname": "Simpson", "jobTitle": "Security Operations Coordinator", "department": "Security", "mailNickname": "bart.simpson" },
+    { "userPrincipalName": "rachel.green@corywest.onmicrosoft.com", "displayName": "Rachel Green", "givenName": "Rachel", "surname": "Green", "jobTitle": "Finance Business Partner", "department": "Finance", "mailNickname": "rachel.green" },
+    { "userPrincipalName": "monica.geller@corywest.onmicrosoft.com", "displayName": "Monica Geller", "givenName": "Monica", "surname": "Geller", "jobTitle": "Finance Operations Manager", "department": "Finance", "mailNickname": "monica.geller" },
+    { "userPrincipalName": "chandler.bing@corywest.onmicrosoft.com", "displayName": "Chandler Bing", "givenName": "Chandler", "surname": "Bing", "jobTitle": "Financial Reporting Manager", "department": "Finance", "mailNickname": "chandler.bing" },
+    { "userPrincipalName": "ross.geller@corywest.onmicrosoft.com", "displayName": "Ross Geller", "givenName": "Ross", "surname": "Geller", "jobTitle": "Financial Analyst", "department": "Finance", "mailNickname": "ross.geller" },
+    { "userPrincipalName": "jerry.seinfeld@corywest.onmicrosoft.com", "displayName": "Jerry Seinfeld", "givenName": "Jerry", "surname": "Seinfeld", "jobTitle": "People Experience Director", "department": "Human Resources", "mailNickname": "jerry.seinfeld" },
+    { "userPrincipalName": "elaine.benes@corywest.onmicrosoft.com", "displayName": "Elaine Benes", "givenName": "Elaine", "surname": "Benes", "jobTitle": "Human Resources Business Partner", "department": "Human Resources", "mailNickname": "elaine.benes" },
+    { "userPrincipalName": "george.costanza@corywest.onmicrosoft.com", "displayName": "George Costanza", "givenName": "George", "surname": "Costanza", "jobTitle": "Compensation Manager", "department": "Human Resources", "mailNickname": "george.costanza" },
+    { "userPrincipalName": "cosmo.kramer@corywest.onmicrosoft.com", "displayName": "Cosmo Kramer", "givenName": "Cosmo", "surname": "Kramer", "jobTitle": "Workplace Relations Manager", "department": "Human Resources", "mailNickname": "cosmo.kramer" }
   ]
 }

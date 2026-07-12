@@ -68,8 +68,8 @@ isolated tenant before using this design elsewhere.
 - `payloads/send-message-batch.ps1`: sends a message batch
 - `payloads/send-customer-payment-export.ps1`: sends a customer payment export
 - `payloads/send-external-email.ps1`: sends an external email
-- `payloads/tenant-seed.json`: source of truth for the tenant seed
-- `payloads/seed-tenant.ps1`: creates or updates seeded users, membership, and licenses
+- `payloads/tenant-seed.json`: source of truth for baseline users, departments, groups, memberships, and licenses
+- `payloads/seed-tenant.ps1`: prepares and validates the version-controlled tenant baseline
 - `version.json`: cache-busting site, runner, and payload release versions
 
 ## Tests and command-line job runner

@@ -488,7 +488,7 @@
         await runOperation("payloads/send-external-email.ps1", "sendExternalEmail", "External email", el["external-email-job-status"]);
         return;
       case "seedTenant":
-        await runOperation("payloads/seed-tenant.ps1", "seedTenant", "Tenant seed", el["tenant-seed-job-status"]);
+        await runOperation("payloads/seed-tenant.ps1", "seedTenant", "Tenant preparation", el["tenant-seed-job-status"]);
         return;
     }
   }
@@ -544,6 +544,6 @@
   bind("run-email-triage", "click", () => handleAction(() => runOperation("payloads/send-message-batch.ps1", "sendMessageBatch", "Message batch", el["message-batch-job-status"])));
   bind("run-customer-payment-export", "click", () => handleAction(() => runOperation("payloads/send-customer-payment-export.ps1", "sendCustomerPaymentExport", "Customer payment export", el["payment-export-job-status"])));
   bind("run-external-email", "click", () => handleAction(() => runOperation("payloads/send-external-email.ps1", "sendExternalEmail", "External email", el["external-email-job-status"])));
-  bind("run-tenant-seed", "click", () => handleAction(() => runOperation("payloads/seed-tenant.ps1", "seedTenant", "Tenant seed", el["tenant-seed-job-status"])));
+  bind("run-tenant-seed", "click", () => handleAction(() => runOperation("payloads/seed-tenant.ps1", "seedTenant", "Tenant preparation", el["tenant-seed-job-status"])));
   initialize().catch(error => setStatus(explainError(error), "error"));
 })();

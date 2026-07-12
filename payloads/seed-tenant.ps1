@@ -99,7 +99,7 @@ function Invoke-GraphWithRetry {
         } catch {
             $statusCode = Get-GraphStatusCode -ErrorRecord $_
             if ($RetryStatusCodes -notcontains $statusCode -or $attempt -eq $MaximumAttempts) { throw }
-            Write-Output "Waiting for Microsoft Graph directory changes before retrying $Method $Path."
+            Write-Verbose "Waiting for Microsoft Graph directory changes before retrying $Method $Path."
             Start-Sleep -Seconds 2
         }
     }
@@ -160,6 +160,79 @@ function Resolve-License {
     return @{ skuId = $sku.skuId; disabledPlans = @() }
 }
 
+function Get-BaselineGroup {
+    param($Definition, [switch] $Microsoft365)
+    $select = 'id,displayName,description,mailNickname,mailEnabled,securityEnabled,groupTypes,visibility,assignedLicenses'
+    $escapedMailNickname = [string]$Definition.mailNickname -replace "'", "''"
+    $filter = [Uri]::EscapeDataString("mailNickname eq '$escapedMailNickname'")
+    $group = @((Invoke-Graph -Method GET -Path "/groups?`$filter=$filter&`$select=$select").value) | Select-Object -First 1
+    if (-not $group) {
+        foreach ($displayName in @($Definition.displayName) + @($Definition.legacyDisplayNames)) {
+            $escapedDisplayName = [string]$displayName -replace "'", "''"
+            $filter = [Uri]::EscapeDataString("displayName eq '$escapedDisplayName'")
+            $group = @((Invoke-Graph -Method GET -Path "/groups?`$filter=$filter&`$select=$select").value) | Select-Object -First 1
+            if ($group) { break }
+        }
+    }
+
+    if (-not $group) {
+        $properties = @{
+            displayName = $Definition.displayName
+            mailNickname = $Definition.mailNickname
+            mailEnabled = [bool]$Microsoft365
+            securityEnabled = -not [bool]$Microsoft365
+        }
+        if ($Microsoft365) {
+            $properties.groupTypes = @('Unified')
+            $properties.visibility = 'Private'
+            $properties.description = $Definition.description
+        }
+        $group = Invoke-Graph -Method POST -Path '/groups' -Body $properties
+        return [pscustomobject]@{ Group = $group; Created = $true; Repaired = $false }
+    }
+
+    $isMicrosoft365 = @($group.groupTypes) -contains 'Unified'
+    if ([bool]$Microsoft365 -ne $isMicrosoft365) {
+        $expectedType = if ($Microsoft365) { 'Microsoft 365' } else { 'security' }
+        throw "Baseline group '$($Definition.displayName)' exists with mail nickname '$($Definition.mailNickname)' but is not a $expectedType group."
+    }
+
+    $updates = @{}
+    if ($group.displayName -ne $Definition.displayName) { $updates.displayName = $Definition.displayName }
+    if ($group.mailNickname -ne $Definition.mailNickname) { $updates.mailNickname = $Definition.mailNickname }
+    if ($Microsoft365 -and $group.description -ne $Definition.description) { $updates.description = $Definition.description }
+    if ($Microsoft365 -and $group.visibility -ne 'Private') { $updates.visibility = 'Private' }
+    if ($Microsoft365 -and $group.securityEnabled) { $updates.securityEnabled = $false }
+    if ($updates.Count) {
+        Invoke-Graph -Method PATCH -Path "/groups/$($group.id)" -Body $updates | Out-Null
+        foreach ($key in $updates.Keys) { $group.$key = $updates[$key] }
+    }
+    return [pscustomobject]@{ Group = $group; Created = $false; Repaired = [bool]$updates.Count }
+}
+
+function Confirm-GroupMembership {
+    param([string] $GroupId, [string[]] $ExpectedUserIds)
+    $members = (Invoke-GraphWithRetry -Method GET -Path "/groups/$GroupId/members?`$select=id").value
+    $memberIds = @($members | ForEach-Object { [string]$_.id })
+    $missingUserIds = @($ExpectedUserIds | Where-Object { $memberIds -notcontains $_ })
+    foreach ($userId in $missingUserIds) {
+        try {
+            Invoke-GraphWithRetry -Method POST -Path "/groups/$GroupId/members/`$ref" -Body @{ '@odata.id' = "https://graph.microsoft.com/v1.0/directoryObjects/$userId" } | Out-Null
+        } catch {
+            if ((Get-GraphStatusCode -ErrorRecord $_) -ne 400 -or $_.Exception.Message -notmatch 'already exist') { throw }
+        }
+    }
+    for ($attempt = 1; $attempt -le 15; $attempt += 1) {
+        $verifiedIds = @((Invoke-GraphWithRetry -Method GET -Path "/groups/$GroupId/members?`$select=id").value | ForEach-Object { [string]$_.id })
+        $unverifiedIds = @($ExpectedUserIds | Where-Object { $verifiedIds -notcontains $_ })
+        if (-not $unverifiedIds.Count) {
+            return [pscustomobject]@{ Added = $missingUserIds.Count; Verified = $ExpectedUserIds.Count }
+        }
+        if ($attempt -eq 15) { throw "Microsoft Graph did not confirm $($unverifiedIds.Count) expected member(s) for group $GroupId." }
+        Start-Sleep -Seconds 2
+    }
+}
+
 $licenses = @((Resolve-License -License $seed.licenses.businessPremium))
 $combinedLicense = Resolve-License -License $seed.licenses.combinedDefenderAndPurview -Optional
 if ($null -ne $combinedLicense) {
@@ -171,52 +244,43 @@ if ($null -ne $combinedLicense) {
     Write-Output "Using separate Defender and Purview license SKUs."
 }
 
-$group = $null
-foreach ($displayName in @($seed.group.displayName) + @($seed.group.legacyDisplayNames)) {
-    $groupFilter = [Uri]::EscapeDataString("displayName eq '$displayName'")
-    $groups = (Invoke-Graph -Method GET -Path "/groups?`$filter=$groupFilter&`$select=id,displayName,assignedLicenses").value
-    $group = $groups | Select-Object -First 1
-    if ($group) { break }
-}
-if (-not $group) {
-    $group = Invoke-Graph -Method POST -Path '/groups' -Body @{
-        displayName = $seed.group.displayName
-        mailEnabled = $false
-        mailNickname = $seed.group.mailNickname
-        securityEnabled = $true
-    }
-    Write-Output "Created group: $($group.displayName)"
-} else {
-    if ($group.displayName -ne $seed.group.displayName) {
-        Invoke-Graph -Method PATCH -Path "/groups/$($group.id)" -Body @{ displayName = $seed.group.displayName } | Out-Null
-        $group.displayName = $seed.group.displayName
-        Write-Output "Renamed existing group to: $($group.displayName)"
-    }
-    Write-Output "Reusing group: $($group.displayName)"
-}
+$licensingGroupResult = Get-BaselineGroup -Definition $seed.licensingGroup
+$licensingGroup = $licensingGroupResult.Group
 
-$existingLicenseIds = @($group.assignedLicenses | ForEach-Object skuId)
+$existingLicenseIds = @($licensingGroup.assignedLicenses | ForEach-Object skuId)
 $missingLicenses = @($licenses | Where-Object { $existingLicenseIds -notcontains $_.skuId })
 if ($missingLicenses.Count -gt 0) {
-    Invoke-GraphWithRetry -Method POST -Path "/groups/$($group.id)/assignLicense" -Body @{ addLicenses = $missingLicenses; removeLicenses = @() } | Out-Null
-    Write-Output "Assigned $($missingLicenses.Count) license SKU(s) to $($group.displayName)."
-} else {
-    Write-Output 'All requested license SKUs are already assigned to the group.'
+    Invoke-GraphWithRetry -Method POST -Path "/groups/$($licensingGroup.id)/assignLicense" -Body @{ addLicenses = $missingLicenses; removeLicenses = @() } | Out-Null
 }
 
-$memberIds = @((Invoke-Graph -Method GET -Path "/groups/$($group.id)/members?`$select=id").value | ForEach-Object id)
 $created = 0
 $reused = 0
+$baselineUsersByUpn = @{}
 foreach ($seedUser in $seed.users) {
     $result = Get-SeedUser -SeedUser $seedUser
     if ($result.Created) { $created += 1 } else { $reused += 1 }
-    if ($memberIds -notcontains $result.User.id) {
-        try {
-            Invoke-GraphWithRetry -Method POST -Path "/groups/$($group.id)/members/`$ref" -Body @{ '@odata.id' = "https://graph.microsoft.com/v1.0/directoryObjects/$($result.User.id)" } | Out-Null
-        } catch {
-            if ((Get-GraphStatusCode -ErrorRecord $_) -ne 400 -or $_.Exception.Message -notmatch 'already exist') { throw }
-        }
-    }
+    $baselineUsersByUpn[([string]$seedUser.userPrincipalName).ToLowerInvariant()] = $result.User
 }
 
-Write-Output "Tenant seed complete. Created: $created. Reused: $reused. Group members: $($seed.users.Count)."
+$allEmployeeIds = @($seed.users | ForEach-Object { [string]$baselineUsersByUpn[([string]$_.userPrincipalName).ToLowerInvariant()].id })
+$licensingMembership = Confirm-GroupMembership -GroupId $licensingGroup.id -ExpectedUserIds $allEmployeeIds
+
+$departmentGroupsCreated = 0
+$departmentGroupsRepaired = 0
+$departmentMembershipsAdded = 0
+$departmentMembershipsVerified = 0
+foreach ($department in $seed.departments) {
+    $departmentGroupResult = Get-BaselineGroup -Definition $department -Microsoft365
+    if ($departmentGroupResult.Created) { $departmentGroupsCreated += 1 }
+    if ($departmentGroupResult.Repaired) { $departmentGroupsRepaired += 1 }
+    $departmentUserIds = foreach ($userPrincipalName in $department.memberUserPrincipalNames) {
+        $baselineUser = $baselineUsersByUpn[([string]$userPrincipalName).ToLowerInvariant()]
+        if (-not $baselineUser) { throw "Department '$($department.displayName)' references unknown baseline user '$userPrincipalName'." }
+        [string]$baselineUser.id
+    }
+    $membership = Confirm-GroupMembership -GroupId $departmentGroupResult.Group.id -ExpectedUserIds @($departmentUserIds)
+    $departmentMembershipsAdded += $membership.Added
+    $departmentMembershipsVerified += $membership.Verified
+}
+
+Write-Output "Tenant preparation complete. Users: $($seed.users.Count) configured ($created created, $reused repaired). Licensing: $($seed.licensingGroup.displayName) with $($licensingMembership.Verified)/$($seed.users.Count) baseline members and $($licenses.Count) license SKU(s). Departments: $($seed.departments.Count) Microsoft 365 groups ($departmentGroupsCreated created, $departmentGroupsRepaired repaired) with $departmentMembershipsVerified configured memberships ($departmentMembershipsAdded added)."
