@@ -15,3 +15,5 @@ if ($result.FailedCount -gt 0) { throw "$($result.FailedCount) PowerShell test(s
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & node --test (Join-Path $PSScriptRoot 'prerequisite-flow.test.mjs')
 if ($LASTEXITCODE -ne 0) { throw 'JavaScript tests failed.' }
+& node --test (Join-Path $PSScriptRoot 'frontend-ui.test.mjs')
+if ($LASTEXITCODE -ne 0) { throw 'Frontend tests failed.' }

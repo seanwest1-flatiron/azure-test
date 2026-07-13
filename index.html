@@ -5,16 +5,26 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Cache-Control" content="no-cache">
   <title>After Party Labs</title>
+  <style id="critical-loading-style">
+    html { min-height: 100%; background: #0b1020; color-scheme: dark; }
+    body { min-height: 100vh; margin: 0; background: #0b1020; color: #f5f7ff; font-family: system-ui, sans-serif; }
+    body > main { visibility: hidden; }
+    #site-loading { display: grid; min-height: 100vh; place-items: center; color: #c8d0e7; }
+    html.styles-ready body > main, html.styles-failed body > main { visibility: visible; }
+    html.styles-ready #site-loading, html.styles-failed #site-loading { display: none; }
+    html.styles-failed body > main { width: min(820px, calc(100% - 32px)); margin: 0 auto; padding: 48px 0; }
+    html.styles-failed #status { padding: 16px 20px; border: 1px solid #e0a33b; border-radius: 12px; background: #3b280f; }
+  </style>
 </head>
 <body>
+  <div id="site-loading" role="status">Loading After Party Labs…</div>
   <main>
     <p class="eyebrow">After Party</p>
     <h1>After Party Labs</h1>
     <p class="lede">Choose a lab. After Party checks sign-in, the reusable environment, and the tenant baseline before it starts.</p>
 
     <div id="configuration-warning" class="notice warning" hidden></div>
-    <div id="status" class="notice" role="status" aria-live="polite">Checking configuration…</div>
-    <div id="environment-status" class="environment-status" role="status" aria-live="polite">Environment will be checked when a lab starts.</div>
+    <div id="status" class="notice global-status" role="status" aria-live="polite">Environment will be checked when a lab starts.</div>
 
     <details class="environment-details">
       <summary>Environment details</summary>
@@ -40,56 +50,56 @@
 
     <section class="card">
       <div class="section-heading"><div><span class="step">1</span><h2>Send email</h2></div></div>
-      <p>Sends one message from <code>kobe@corywest.onmicrosoft.com</code> to <code>cory@corywest.onmicrosoft.com</code>.</p>
+      <p>Sends one message from Kobe West to Cory West.</p>
       <button id="run" type="button" disabled>Send email</button>
       <div id="email-job-status" class="job-status" role="status" aria-live="polite" hidden></div>
     </section>
 
     <section class="card">
       <div class="section-heading"><div><span class="step">2</span><h2>Share OneDrive file</h2></div></div>
-      <p>Creates a text file in <code>kobe@corywest.onmicrosoft.com</code>'s OneDrive and grants <code>cory@corywest.onmicrosoft.com</code> read access. Microsoft Graph sends Cory the sharing invitation.</p>
+      <p>Creates a file in Kobe West’s OneDrive and shares it with Cory West.</p>
       <button id="run-file-share" type="button" disabled>Share file</button>
       <div id="file-share-job-status" class="job-status" role="status" aria-live="polite" hidden></div>
     </section>
 
     <section class="card">
       <div class="section-heading"><div><span class="step">3</span><h2>Send message batch</h2></div></div>
-      <p>Sends 100 messages between Kobe and Cory. Some include text attachments and account-status notices.</p>
+      <p>Sends 100 internal messages. Some include text attachments and account-status notices.</p>
       <button id="run-email-triage" type="button" disabled>Send message batch</button>
       <div id="message-batch-job-status" class="job-status" role="status" aria-live="polite" hidden></div>
     </section>
 
     <section class="card">
       <div class="section-heading"><div><span class="step">4</span><h2>Send customer payment export</h2></div></div>
-      <p>Sends a customer payment export from <code>kobe@corywest.onmicrosoft.com</code> to <code>test-customer-data@mailinator.com</code>.</p>
+      <p>Sends a customer payment export from Kobe West to an external recipient.</p>
       <button id="run-customer-payment-export" type="button" disabled>Send payment export</button>
       <div id="payment-export-job-status" class="job-status" role="status" aria-live="polite" hidden></div>
     </section>
 
     <section class="card">
       <div class="section-heading"><div><span class="step">5</span><h2>Send external email</h2></div></div>
-      <p>Sends a message from <code>kobe@corywest.onmicrosoft.com</code> to <code>jonk9980@gmail.com</code>.</p>
+      <p>Sends a message from Kobe West to an external recipient.</p>
       <button id="run-external-email" type="button" disabled>Send external email</button>
       <div id="external-email-job-status" class="job-status" role="status" aria-live="polite" hidden></div>
     </section>
 
     <section class="card">
       <div class="section-heading"><div><span class="step">6</span><h2>Failed sign-in</h2></div></div>
-      <p>Submits one incorrect-password sign-in for a seeded non-admin account so Microsoft Entra records the failed attempt.</p>
+      <p>Submits one incorrect-password sign-in for Lisa Simpson so Microsoft Entra records the failed attempt.</p>
       <button id="run-failed-sign-in" type="button" disabled>Record failed sign-in</button>
       <div id="failed-sign-in-job-status" class="job-status" role="status" aria-live="polite" hidden></div>
     </section>
 
     <section class="card">
       <div class="section-heading"><div><span class="step">7</span><h2>Three browser failed sign-ins</h2></div></div>
-      <p>Uses one short-lived browser worker to submit three sequential incorrect-password sign-ins for a seeded non-admin user.</p>
+      <p>Uses one short-lived browser worker to submit three sequential incorrect-password sign-ins for Lisa Simpson.</p>
       <button id="run-browser-failed-sign-in-three" type="button" disabled>Record three browser failed sign-ins</button>
       <div id="browser-failed-sign-in-three-job-status" class="job-status" role="status" aria-live="polite" hidden></div>
     </section>
 
     <section class="card">
       <div class="section-heading"><div><span class="step">8</span><h2>Browser failed sign-in</h2></div></div>
-      <p>Uses one short-lived browser worker to submit one incorrect-password sign-in for a seeded non-admin account and return the Entra result.</p>
+      <p>Uses one short-lived browser worker to submit one incorrect-password sign-in for Lisa Simpson and return the Entra result.</p>
       <button id="run-browser-failed-sign-in" type="button" disabled>Record browser failed sign-in</button>
       <div id="browser-failed-sign-in-job-status" class="job-status" role="status" aria-live="polite" hidden></div>
     </section>
@@ -114,6 +124,7 @@
         document.body.append(script);
       });
       const showLoaderError = error => {
+        document.documentElement.classList.add("styles-failed");
         const status = document.getElementById("status");
         status.textContent = `Unable to load the current site files: ${error.message}`;
         status.className = "notice error";
@@ -126,6 +137,7 @@
         window.AFTER_PARTY_BUILD = Object.freeze(manifest);
         const version = encodeURIComponent(manifest.siteVersion);
         await addStylesheet(`styles.css?v=${version}`);
+        document.documentElement.classList.add("styles-ready");
         await addScript(`config.js?v=${version}`);
         await addScript(`msal-browser.min.js?v=${version}`);
         await addScript(`automation-client.js?v=${version}`);

@@ -16,7 +16,7 @@
   const apiVersions = Object.freeze({ resources: "2021-04-01", deployments: "2022-09-01", automation: automation.API_VERSION });
   const el = Object.fromEntries([
     "configuration-warning", "status", "sign-in", "sign-out", "account", "authorization", "authorize-azure",
-    "subscription", "resource-group", "environment-status", "install", "run", "run-file-share", "run-email-triage",
+    "subscription", "resource-group", "install", "run", "run-file-share", "run-email-triage",
     "run-customer-payment-export", "run-external-email", "run-tenant-seed", "run-failed-sign-in", "run-browser-failed-sign-in", "run-browser-failed-sign-in-three", "email-job-status", "file-share-job-status", "message-batch-job-status", "payment-export-job-status", "external-email-job-status", "tenant-seed-job-status", "failed-sign-in-job-status", "browser-failed-sign-in-job-status", "browser-failed-sign-in-three-job-status", "diagnostics"
   ].map(id => [id, document.getElementById(id)]));
   let msalClient;
@@ -56,9 +56,7 @@
   }
 
   function setEnvironment(message, kind = "") {
-    if (!el["environment-status"]) return;
-    el["environment-status"].textContent = message;
-    el["environment-status"].className = `environment-status ${kind}`.trim();
+    setStatus(message, kind);
   }
 
   function setJobStatus(element, message, kind = "", output = "") {
@@ -422,8 +420,7 @@
         intervalMs: JOB_POLL_INTERVAL_MS,
         onStatus: ({ attempt, status }) => {
           if (["Completed", ...automation.TERMINAL_FAILURE_STATES].includes(status)) return;
-          const spinner = ["◐", "◓", "◑", "◒"][attempt % 4];
-          setJobStatus(statusElement, `${spinner} ${label}: ${status.toLowerCase()}… Job ID: ${jobId}`, status.toLowerCase());
+          setJobStatus(statusElement, `${label}: ${status.toLowerCase()}… Job ID: ${jobId}`, status.toLowerCase());
         }
       });
       if (result.status === "Completed") {
@@ -457,7 +454,7 @@
       const jobParameters = ["browserFailedSignIn", "browserFailedSignInThree"].includes(operation)
         ? { ...parameters, SubscriptionId: runner.subscriptionId, ResourceGroup: runner.resourceGroup }
         : parameters;
-      setJobStatus(statusElement, `◐ ${label}: queued… Job ID: ${jobId}`, "queued");
+      setJobStatus(statusElement, `${label}: queued… Job ID: ${jobId}`, "queued");
       const { jobPath } = await automation.startJob({ requestJson: (path, options = {}) => arm(path, options), runner, payloadPath, jobId, parameters: jobParameters });
       jobStarted = true;
       void pollJob(jobPath, statusElement, label, jobId, operation).catch(error => setJobStatus(statusElement, `${label}: unable to refresh status.`, "error", explainError(error)));
@@ -489,7 +486,7 @@
     const statusElement = el["tenant-seed-job-status"];
     const jobId = crypto.randomUUID();
     try {
-      setJobStatus(statusElement, `◐ Tenant preparation: queued… Job ID: ${jobId}`, "queued");
+      setJobStatus(statusElement, `Tenant preparation: queued… Job ID: ${jobId}`, "queued");
       const { jobPath } = await automation.startJob({ requestJson: (path, options = {}) => arm(path, options), runner, payloadPath: "payloads/seed-tenant.ps1", jobId });
       const result = await pollJob(jobPath, statusElement, "Tenant preparation", jobId, operation);
       if (result.status !== "Completed") throw new Error(result.output || `Tenant preparation finished with status ${result.status}.`);
@@ -522,7 +519,7 @@
     if (!definition) throw new Error(`Unknown lab operation: ${operation}`);
     const lab = { ...definition, form };
     prerequisiteStatusElement = el[lab.statusId];
-    setJobStatus(prerequisiteStatusElement, `◐ ${lab.label}: waiting for prerequisites…`, "queued");
+    setJobStatus(prerequisiteStatusElement, `${lab.label}: checking sign-in…`, "queued");
     setBusy(true);
     try {
       const result = await prerequisiteFlow.start(lab);
@@ -590,9 +587,8 @@
       runnerVersion: () => buildVersion("runnerVersion"),
       tenantBaselineVersion: () => buildVersion("tenantBaselineVersion"),
       progress: message => {
-        setEnvironment(message);
-        setStatus(message);
-        if (prerequisiteStatusElement) setJobStatus(prerequisiteStatusElement, `◐ Prerequisites: ${message}`, "queued");
+        setStatus("Environment check in progress.");
+        if (prerequisiteStatusElement) setJobStatus(prerequisiteStatusElement, message, "queued");
       },
       retryOptions: { attempts: 2 }
     });

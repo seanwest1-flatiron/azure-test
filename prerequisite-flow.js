@@ -29,19 +29,20 @@
       try {
         dependencies.progress("Checking sign-in…");
         if (!dependencies.isSignedIn()) await dependencies.signIn(lab);
+        dependencies.progress("Checking authorization…");
         await retrySafe(() => dependencies.ensureAuthorization(lab), dependencies.retryOptions);
-        dependencies.progress("Restoring the After Party environment…");
+        dependencies.progress("Checking environment…");
         await retrySafe(() => dependencies.restoreEnvironment(lab), dependencies.retryOptions);
         let runner = await retrySafe(() => dependencies.discoverRunner(lab), dependencies.retryOptions);
         if (!runner || runner.runnerVersion !== dependencies.runnerVersion()) {
-          dependencies.progress(runner ? "Updating the After Party environment…" : "Creating the After Party environment…");
+          dependencies.progress(runner ? "Updating environment…" : "Creating environment…");
           runner = await dependencies.installRunner(lab, runner);
         }
         if (runner.tenantBaselineVersion !== dependencies.tenantBaselineVersion()) {
-          dependencies.progress("Preparing the tenant baseline…");
+          dependencies.progress("Preparing tenant…");
           runner = await dependencies.prepareBaseline(lab, runner);
         }
-        dependencies.progress(`${lab.label}: starting…`);
+        dependencies.progress("Starting lab…");
         await dependencies.startLab(lab, runner);
         return { started: true, runner };
       } finally {
