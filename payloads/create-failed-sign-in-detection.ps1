@@ -154,6 +154,11 @@ $alertTemplate = @{
     severity = [string]$definition.severity
     category = [string]$definition.category
     recommendedActions = 'Review the related sign-in activity.'
+    entityMappings = @{
+        accounts = @(
+            @{ upnColumn = 'AccountUpn' }
+        )
+    }
 }
 $rule = @{
     '@odata.type' = '#microsoft.graph.security.detectionRule'
@@ -182,6 +187,7 @@ function Test-RuleNeedsRepair {
     if ($ExistingRule.displayName -ne $rule.displayName -or $ExistingRule.description -ne $rule.description) { return $true }
     if ($ExistingRule.queryCondition.queryText -ne $query) { return $true }
     if ($ExistingRule.schedule.frequency -ne $rule.schedule.frequency) { return $true }
+    if (@($ExistingRule.detectionAction.alertTemplate.entityMappings.accounts).Count -ne 1 -or $ExistingRule.detectionAction.alertTemplate.entityMappings.accounts[0].upnColumn -ne 'AccountUpn') { return $true }
     if ((Get-RuleActionCount -DetectionRule $ExistingRule -PropertyName 'automatedActions') -gt 0) { return $true }
     if ((Get-RuleActionCount -DetectionRule $ExistingRule -PropertyName 'responseActions') -gt 0) { return $true }
     return $false

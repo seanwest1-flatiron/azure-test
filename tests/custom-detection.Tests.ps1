@@ -70,6 +70,9 @@ Describe 'Failed sign-in custom detection payload' {
             $Body -match 'arg_max\(Timestamp, ReportId\)' -and
             $Body -match 'top 1 by ClusterWindowEnd desc, ClusterWindowStart desc' -and
             $Body -match 'project Timestamp, ReportId, AccountUpn, ApplicationId, FailureCount' -and
+            $Body -match '"entityMappings"\s*:\s*\{' -and
+            $Body -match '"accounts"\s*:\s*\[' -and
+            $Body -match '"upnColumn"\s*:\s*"AccountUpn"' -and
             $Body -notmatch 'automatedActions|responseActions|disableUser|resetPassword'
         }
         $global:AfterPartyDetectionRule.status | Should -Be 'enabled'
@@ -103,7 +106,10 @@ Describe 'Failed sign-in custom detection payload' {
             description = 'outdated description'
             queryCondition = [pscustomobject]@{ queryText = 'outdated query' }
             schedule = [pscustomobject]@{ frequency = 'PT1H' }
-            detectionAction = [pscustomobject]@{ automatedActions = [pscustomobject]@{ disableUsers = @([pscustomobject]@{ accountSidColumn = 'AccountSid' }) } }
+            detectionAction = [pscustomobject]@{
+                alertTemplate = [pscustomobject]@{ entityMappings = [pscustomobject]@{ accounts = @() } }
+                automatedActions = [pscustomobject]@{ disableUsers = @([pscustomobject]@{ accountSidColumn = 'AccountSid' }) }
+            }
         }
 
         $output = & $payloadPath -GraphAccessToken 'graph-token' -TenantDomain 'school.onmicrosoft.com'
@@ -111,6 +117,7 @@ Describe 'Failed sign-in custom detection payload' {
         $global:AfterPartyDetectionRule.status | Should -Be 'enabled'
         $global:AfterPartyDetectionRule.detectionAction.automatedActions | Should -BeNullOrEmpty
         $global:AfterPartyDetectionRule.detectionAction.responseActions | Should -BeNullOrEmpty
+        $global:AfterPartyDetectionRule.detectionAction.alertTemplate.entityMappings.accounts[0].upnColumn | Should -Be 'AccountUpn'
         ($output -join "`n") | Should -Match 'repaired and enabled'
         ($output -join "`n") | Should -Match 'alert-only with no automated remediation'
     }
