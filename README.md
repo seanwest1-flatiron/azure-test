@@ -25,4 +25,5 @@ Viewing and editing the unauthenticated frontend requires no Azure configuration
 - [Project overview](docs/project-overview.md) — product model, architecture, and user experience
 - [Tenant baseline](docs/tenant-baseline.md) — expected licenses, users, groups, and memberships
 - [Testing and live validation](docs/testing.md) — mocked tests and explicit authorization boundaries
+- [Local frontend and TAP development](docs/developer-setup.md) — Playwright setup, app registration, mocked and live TAP workflows
 - [Coding-agent instructions](AGENTS.md) — durable repository working conventions

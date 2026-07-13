@@ -1,0 +1,17 @@
+{
+  "name": "after-party-development-tools",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test:mocked": "pwsh ./tests/run-tests.ps1",
+    "tap:setup": "node ./scripts/setup-local-tap-harness.mjs",
+    "tap:check": "node ./scripts/check-local-tap-setup.mjs",
+    "tap:local": "node ./scripts/run-local-tap-sign-in.mjs"
+  },
+  "devDependencies": {
+    "@azure/identity": "4.13.1",
+    "playwright": "1.61.0"
+  }
+}

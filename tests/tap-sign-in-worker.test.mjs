@@ -4,7 +4,7 @@ import test from "node:test";
 
 process.env.AFTER_PARTY_WORKER_TEST = "1";
 process.env.TEMPORARY_ACCESS_PASS = "secret-tap-value";
-const { CONSENT_SUBMIT_FALLBACK_SELECTOR, TAP_INPUT_SELECTOR, TAP_SUBMIT_FALLBACK_SELECTOR, base64Url, clickConsentAccept, clickTapSignIn, createPkce, credentialEntryStage, decodeJwtClaim, diagnosticUrl, isPermissionsRequestedPage, isRegistrationInterruption, safeText, tenantUserPrincipalName } = await import("../payloads/tap-sign-in-worker.mjs");
+const { CONSENT_SUBMIT_FALLBACK_SELECTOR, TAP_INPUT_SELECTOR, TAP_SUBMIT_FALLBACK_SELECTOR, base64Url, buildAuthorizeUrl, clickAccountSelection, clickConsentAccept, clickTapSignIn, createPkce, credentialEntryStage, decodeJwtClaim, diagnosticUrl, isAccountSelectionPage, isPermissionsRequestedPage, isRegistrationInterruption, runTapSignIn, safeText, tenantUserPrincipalName } = await import("../payloads/tap-sign-in-worker.mjs");
 
 test("builds Lisa's UPN from the connected tenant domain", () => {
   assert.equal(tenantUserPrincipalName("lisa.simpson", "student.onmicrosoft.com"), "lisa.simpson@student.onmicrosoft.com");
@@ -24,6 +24,46 @@ test("detects security-information and MFA registration interruption", () => {
   assert.equal(isRegistrationInterruption("https://mysignins.microsoft.com/security-info", ""), true);
   assert.equal(isRegistrationInterruption("https://login.microsoftonline.com/", "More information required"), true);
   assert.equal(isRegistrationInterruption("http://localhost/?code=redacted", "You signed in"), false);
+});
+
+test("builds an isolated interactive authorization request with PKCE", () => {
+  const url = buildAuthorizeUrl({
+    tenantId: "11111111-1111-4111-8111-111111111111",
+    clientId: "22222222-2222-4222-8222-222222222222",
+    upn: "lisa.simpson@student.onmicrosoft.com",
+    state: "expected-state",
+    challenge: "expected-challenge"
+  });
+  assert.equal(url.origin, "https://login.microsoftonline.com");
+  assert.equal(url.searchParams.get("redirect_uri"), "http://localhost");
+  assert.equal(url.searchParams.get("prompt"), "login");
+  assert.equal(url.searchParams.get("login_hint"), "lisa.simpson@student.onmicrosoft.com");
+  assert.equal(url.searchParams.get("scope"), "openid profile https://graph.microsoft.com/User.Read");
+  assert.equal(url.searchParams.get("code_challenge"), "expected-challenge");
+  assert.equal(url.searchParams.get("code_challenge_method"), "S256");
+});
+
+test("treats account selection as optional and selects Lisa or another account", async () => {
+  assert.equal(isAccountSelectionPage("Pick an account"), true);
+  assert.equal(isAccountSelectionPage("Enter password"), false);
+  const clicks = [];
+  const pageWithLisa = {
+    getByText(value) {
+      const isLisa = typeof value === "string";
+      return { first: () => ({ isVisible: async () => isLisa, click: async () => clicks.push(isLisa ? "lisa" : "other") }) };
+    }
+  };
+  assert.equal(await clickAccountSelection(pageWithLisa, "lisa.simpson@student.onmicrosoft.com"), "target");
+  assert.deepEqual(clicks, ["lisa"]);
+
+  const pageWithOther = {
+    getByText(value) {
+      const isOther = value instanceof RegExp;
+      return { first: () => ({ isVisible: async () => isOther, click: async () => clicks.push("other") }) };
+    }
+  };
+  assert.equal(await clickAccountSelection(pageWithOther, "lisa.simpson@student.onmicrosoft.com"), "other");
+  assert.deepEqual(clicks, ["lisa", "other"]);
 });
 
 test("accepts Microsoft's direct TAP screen when login_hint hides the username field", () => {
@@ -115,4 +155,81 @@ test("captures each recognized page state once while masking visible inputs", ()
   assert.match(source, /emitPageCapture\(page, "permissions-requested"\)/);
   assert.match(source, /mask: \[page\.locator\("input:visible, textarea:visible"\)\]/);
   assert.doesNotMatch(source, /element\.value = ""/);
+});
+
+test("uses a fresh nonpersistent browser context and intercepts its own localhost callback", () => {
+  const source = readFileSync(new URL("../payloads/tap-sign-in-worker.mjs", import.meta.url), "utf8");
+  assert.match(source, /browser\.newContext\(\)/);
+  assert.match(source, /page\.route\(url => sameCallbackEndpoint/);
+  assert.doesNotMatch(source, /launchPersistentContext|userDataDir|storageState/);
+});
+
+test("completes the reusable browser callback, token exchange, and Graph me flow with mocks", async () => {
+  const tenantId = "11111111-1111-4111-8111-111111111111";
+  let stage = "username";
+  let currentUrl = "about:blank";
+  let routePredicate;
+  let routeHandler;
+  let contextCloseCount = 0;
+  let browserCloseCount = 0;
+  const locator = selector => {
+    if (selector === "body") return { innerText: async () => "Sign in" };
+    if (selector === 'input[name="loginfmt"]:visible') return {
+      isVisible: async () => stage === "username",
+      fill: async value => assert.equal(value, "lisa.simpson@student.onmicrosoft.com")
+    };
+    if (selector === "#idSIButton9") return { click: async () => { stage = "tap"; } };
+    if (selector === TAP_INPUT_SELECTOR) return { first: () => ({
+      isVisible: async () => stage === "tap",
+      fill: async value => assert.equal(value, "one-time-secret")
+    }) };
+    throw new Error(`Unexpected locator: ${selector}`);
+  };
+  const page = {
+    locator,
+    url: () => currentUrl,
+    route: async (predicate, handler) => { routePredicate = predicate; routeHandler = handler; },
+    goto: async value => { currentUrl = value; },
+    getByRole: () => ({ first: () => ({
+      isVisible: async () => true,
+      click: async () => {
+        const state = new URL(currentUrl).searchParams.get("state");
+        const callback = `http://localhost/?code=authorization-code&state=${state}`;
+        assert.equal(routePredicate(new URL(callback)), true);
+        await routeHandler({
+          request: () => ({ url: () => callback }),
+          fulfill: async value => assert.equal(value.status, 200)
+        });
+      }
+    }) })
+  };
+  const browser = {
+    newContext: async () => ({ newPage: async () => page, close: async () => { contextCloseCount += 1; } }),
+    close: async () => { browserCloseCount += 1; }
+  };
+  const launches = [];
+  const chromium = { launch: async options => { launches.push(options); return browser; } };
+  const tokenPayload = Buffer.from(JSON.stringify({ tid: tenantId })).toString("base64url");
+  const fetchCalls = [];
+  const fetchImpl = async url => {
+    fetchCalls.push(String(url));
+    if (String(url).includes("/token")) return new Response(JSON.stringify({ access_token: `header.${tokenPayload}.signature` }), { status: 200 });
+    return new Response(JSON.stringify({ displayName: "Lisa Simpson", userPrincipalName: "lisa.simpson@student.onmicrosoft.com" }), { status: 200 });
+  };
+
+  const result = await runTapSignIn({
+    tenantId,
+    tenantDomain: "student.onmicrosoft.com",
+    clientId: "22222222-2222-4222-8222-222222222222",
+    userAlias: "lisa.simpson",
+    temporaryAccessPass: "one-time-secret",
+    headless: false
+  }, { chromium, fetchImpl });
+
+  assert.equal(result.result, "confirmed");
+  assert.deepEqual(launches, [{ headless: false }]);
+  assert.equal(contextCloseCount, 1);
+  assert.equal(browserCloseCount, 1);
+  assert.equal(fetchCalls.length, 2);
+  assert.match(fetchCalls[1], /graph\.microsoft\.com\/v1\.0\/me/);
 });
