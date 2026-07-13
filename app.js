@@ -157,7 +157,8 @@
       sendExternalEmail: el["run-external-email"],
       seedTenant: el["run-tenant-seed"],
       failedSignIn: el["run-failed-sign-in"],
-      browserFailedSignIn: el["run-browser-failed-sign-in"]
+      browserFailedSignIn: el["run-browser-failed-sign-in"],
+      browserFailedSignInThree: el["run-browser-failed-sign-in-three"]
     }).forEach(([operation, button]) => {
       if (button) button.disabled = busy || !signedIn || !ready || activeOperations.size > 0;
     });

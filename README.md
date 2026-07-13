@@ -74,7 +74,7 @@ isolated tenant before using this design elsewhere.
 - `payloads/browser-failed-sign-in.ps1`: starts one short-lived Playwright container worker for a browser sign-in failure
 - `payloads/browser-failed-sign-in-worker.mjs`: browser worker downloaded by the short-lived container
 
-Prepare tenant also maintains the After Party lab Password Rule Settings baseline (`LockoutThreshold` 100 and `LockoutDurationInSeconds` 60). These relaxed lockout values are intentional for controlled lab activity and are not a production security recommendation.
+The After Party lab Password Rule Settings baseline is `LockoutThreshold` 50 and `LockoutDurationInSeconds` 60. These relaxed lockout values are intentional for controlled lab activity and are not a production security recommendation.
 
 The failed-sign-in payload uses its own single-tenant public-client registration;
 it does not enable public-client flows on the browser SPA registration.

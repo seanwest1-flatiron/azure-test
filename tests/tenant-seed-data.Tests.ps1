@@ -23,7 +23,7 @@ Describe 'Version-controlled tenant baseline data' {
         $seed.failedSignInLab.clientId | Should -Not -Be 'f1d183a6-1a01-4daf-b5ca-70f44427de17'
         $seed.failedSignInLab.userPrincipalName | Should -Be 'lisa.simpson@corywest.onmicrosoft.com'
         $seed.passwordRuleSettings.templateId | Should -Be '5cf42378-d67d-4f36-ba46-e8b86229381d'
-        $seed.passwordRuleSettings.values.LockoutThreshold | Should -Be '100'
+        $seed.passwordRuleSettings.values.LockoutThreshold | Should -Be '50'
         $seed.passwordRuleSettings.values.LockoutDurationInSeconds | Should -Be '60'
     }
 

@@ -269,7 +269,8 @@ function Set-PasswordRuleSettings {
 }
 
 $licenses = @((Resolve-License -License $seed.licenses.businessPremium))
-$passwordRules = Set-PasswordRuleSettings -Definition $seed.passwordRuleSettings
+$applyPasswordRuleSettings = $false
+if ($applyPasswordRuleSettings) { $passwordRules = Set-PasswordRuleSettings -Definition $seed.passwordRuleSettings }
 $combinedLicense = Resolve-License -License $seed.licenses.combinedDefenderAndPurview -Optional
 if ($null -ne $combinedLicense) {
     $licenses += $combinedLicense
@@ -319,4 +320,4 @@ foreach ($department in $seed.departments) {
     $departmentMembershipsVerified += $membership.Verified
 }
 
-Write-Output "Tenant preparation complete. Users: $($seed.users.Count) configured ($created created, $reused repaired). Licensing: $($seed.licensingGroup.displayName) with $($licensingMembership.Verified)/$($seed.users.Count) baseline members and $($licenses.Count) license SKU(s). Departments: $($seed.departments.Count) Microsoft 365 groups ($departmentGroupsCreated created, $departmentGroupsRepaired repaired) with $departmentMembershipsVerified configured memberships ($departmentMembershipsAdded added). Password Rule Settings verified: LockoutThreshold=$($passwordRules.LockoutThreshold), LockoutDurationInSeconds=$($passwordRules.LockoutDurationInSeconds)."
+Write-Output "Tenant preparation complete. Users: $($seed.users.Count) configured ($created created, $reused repaired). Licensing: $($seed.licensingGroup.displayName) with $($licensingMembership.Verified)/$($seed.users.Count) baseline members and $($licenses.Count) license SKU(s). Departments: $($seed.departments.Count) Microsoft 365 groups ($departmentGroupsCreated created, $departmentGroupsRepaired repaired) with $departmentMembershipsVerified configured memberships ($departmentMembershipsAdded added)."
