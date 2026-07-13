@@ -18,6 +18,13 @@ test("environment updates publish the cache-busted bootstrap runbook", () => {
   assert.match(template, /"publishContentLink": \{[\s\S]*?"uri": "\[parameters\('bootstrapUri'\)\]"/);
 });
 
+test("loads and uses bounded ARM retries without replaying generic side-effecting requests", () => {
+  assert.match(index, /arm-retry\.js\?v=\$\{version\}/);
+  assert.match(app, /armRetry\.retryArmRequest/);
+  assert.match(app, /method: options\.method \|\| "GET"/);
+  assert.doesNotMatch(app, /method: "POST", retryTransient: true/);
+});
+
 test("keeps delegated admin scopes separate from managed-identity application roles", () => {
   assert.match(app, /const GRAPH_SCOPES = \["Application\.Read\.All", "AppRoleAssignment\.ReadWrite\.All"\]/);
   assert.match(app, /"CustomDetection\.ReadWrite\.All"/);

@@ -3,6 +3,7 @@
 (() => {
   const config = window.AFTER_PARTY_CONFIG;
   const automation = window.AfterPartyAutomation;
+  const armRetry = window.AfterPartyArmRetry;
   const runnerPermissions = window.AfterPartyRunnerPermissions;
   const prerequisiteApi = window.AfterPartyPrerequisites;
   const ARM = "https://management.azure.com";
@@ -250,14 +251,25 @@
   }
 
   async function arm(path, options = {}, operation) {
-    return requestJson(`${ARM}${path}`, options, await token([ARM_SCOPE], operation));
+    const accessToken = await token([ARM_SCOPE], operation);
+    return armRetry.retryArmRequest(
+      () => requestJson(`${ARM}${path}`, options, accessToken),
+      { method: options.method || "GET" }
+    );
   }
 
   async function armText(path) {
-    const response = await fetch(`${ARM}${path}`, { headers: { Authorization: `Bearer ${await token([ARM_SCOPE])}` } });
-    const text = await response.text();
-    if (!response.ok) throw new Error(text || `${response.status} ${response.statusText}`);
-    return text.trim().replace(/^"|"$/g, "");
+    const accessToken = await token([ARM_SCOPE]);
+    return armRetry.retryArmRequest(async () => {
+      const response = await fetch(`${ARM}${path}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+      const text = await response.text();
+      if (!response.ok) {
+        const error = new Error(text || `${response.status} ${response.statusText}`);
+        error.status = response.status;
+        throw error;
+      }
+      return text.trim().replace(/^"|"$/g, "");
+    }, { method: "GET" });
   }
 
   async function graph(path, options = {}, operation) {
@@ -698,6 +710,7 @@
       el["sign-in"].disabled = true;
       return;
     }
+    if (!armRetry) throw new Error("arm-retry.js is missing or did not load.");
     if (!window.msal) throw new Error("msal-browser.min.js is missing or did not load.");
     msalClient = new msal.PublicClientApplication({ auth: { clientId: config.clientId, authority: config.authority, redirectUri: config.redirectUri }, cache: { cacheLocation: "sessionStorage" } });
     if (typeof msalClient.initialize === "function") await msalClient.initialize();

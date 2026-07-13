@@ -180,6 +180,7 @@
         document.documentElement.classList.add("styles-ready");
         await addScript(`config.js?v=${version}`);
         await addScript(`msal-browser.min.js?v=${version}`);
+        await addScript(`arm-retry.js?v=${version}`);
         await addScript(`automation-client.js?v=${version}`);
         await addScript(`runner-permissions.js?v=${version}`);
         await addScript(`prerequisite-flow.js?v=${version}`);

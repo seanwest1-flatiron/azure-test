@@ -13,6 +13,8 @@ if ($result.FailedCount -gt 0) { throw "$($result.FailedCount) PowerShell test(s
 
 & node --test (Join-Path $PSScriptRoot 'automation-client.test.mjs')
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& node --test (Join-Path $PSScriptRoot 'arm-retry.test.mjs')
+if ($LASTEXITCODE -ne 0) { throw 'ARM retry tests failed.' }
 & node --test (Join-Path $PSScriptRoot 'browser-failed-sign-in-worker.test.mjs')
 if ($LASTEXITCODE -ne 0) { throw 'Browser worker tests failed.' }
 & node --test (Join-Path $PSScriptRoot 'prerequisite-flow.test.mjs')
