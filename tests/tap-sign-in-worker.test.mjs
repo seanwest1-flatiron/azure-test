@@ -3,7 +3,7 @@ import test from "node:test";
 
 process.env.AFTER_PARTY_WORKER_TEST = "1";
 process.env.TEMPORARY_ACCESS_PASS = "secret-tap-value";
-const { base64Url, createPkce, credentialEntryStage, decodeJwtClaim, diagnosticUrl, isRegistrationInterruption, safeText, tenantUserPrincipalName } = await import("../payloads/tap-sign-in-worker.mjs");
+const { TAP_INPUT_SELECTOR, TAP_SUBMIT_FALLBACK_SELECTOR, base64Url, clickTapSignIn, createPkce, credentialEntryStage, decodeJwtClaim, diagnosticUrl, isRegistrationInterruption, safeText, tenantUserPrincipalName } = await import("../payloads/tap-sign-in-worker.mjs");
 
 test("builds Lisa's UPN from the connected tenant domain", () => {
   assert.equal(tenantUserPrincipalName("lisa.simpson", "student.onmicrosoft.com"), "lisa.simpson@student.onmicrosoft.com");
@@ -26,9 +26,41 @@ test("detects security-information and MFA registration interruption", () => {
 });
 
 test("accepts Microsoft's direct TAP screen when login_hint hides the username field", () => {
+  assert.match(TAP_INPUT_SELECTOR, /input\[name="accesspass"\]:visible/);
   assert.equal(credentialEntryStage({ usernameVisible: false, tapVisible: true }), "tap");
   assert.equal(credentialEntryStage({ usernameVisible: true, tapVisible: false }), "username");
   assert.equal(credentialEntryStage({ usernameVisible: false, tapVisible: false }), "pending");
+});
+
+test("submits the TAP with the accessible Sign in button when available", async () => {
+  const clicks = [];
+  const page = {
+    getByRole(role, options) {
+      assert.equal(role, "button");
+      assert.equal(String(options.name), "/^Sign in$/i");
+      return { first: () => ({ isVisible: async () => true, click: async () => clicks.push("accessible") }) };
+    },
+    locator() {
+      return { first: () => ({ click: async () => clicks.push("fallback") }) };
+    }
+  };
+  await clickTapSignIn(page);
+  assert.deepEqual(clicks, ["accessible"]);
+});
+
+test("falls back to a visible submit control when the accessible Sign in button is unavailable", async () => {
+  const clicks = [];
+  const page = {
+    getByRole() {
+      return { first: () => ({ isVisible: async () => false, click: async () => clicks.push("accessible") }) };
+    },
+    locator(selector) {
+      assert.equal(selector, TAP_SUBMIT_FALLBACK_SELECTOR);
+      return { first: () => ({ click: async () => clicks.push("fallback") }) };
+    }
+  };
+  await clickTapSignIn(page);
+  assert.deepEqual(clicks, ["fallback"]);
 });
 
 test("redacts TAP and OAuth artifacts and validates the delegated tenant claim", () => {

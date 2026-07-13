@@ -9,6 +9,9 @@ const temporaryAccessPass = process.env.TEMPORARY_ACCESS_PASS;
 const capturePageOnFailure = process.env.CAPTURE_PAGE_ON_FAILURE === "1";
 let pageCaptureEmitted = false;
 
+export const TAP_INPUT_SELECTOR = 'input[name="accesspass"]:visible, input[name="passwd"]:visible, input[name="otc"]:visible, #idTxtBx_SAOTCC_OTC:visible';
+export const TAP_SUBMIT_FALLBACK_SELECTOR = 'button[type="submit"]:visible, input[type="submit"]:visible, #idSIButton9:visible';
+
 export function base64Url(value) {
   return Buffer.from(value).toString("base64").replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
 }
@@ -50,6 +53,15 @@ export function credentialEntryStage({ usernameVisible, tapVisible }) {
   if (tapVisible) return "tap";
   if (usernameVisible) return "username";
   return "pending";
+}
+
+export async function clickTapSignIn(page) {
+  const accessibleSignIn = page.getByRole("button", { name: /^Sign in$/i }).first();
+  if (await accessibleSignIn.isVisible().catch(() => false)) {
+    await accessibleSignIn.click();
+    return;
+  }
+  await page.locator(TAP_SUBMIT_FALLBACK_SELECTOR).first().click();
 }
 
 function report(result, details = {}) {
@@ -114,7 +126,7 @@ async function waitForOutcome(page, expectedState, timeoutMs) {
 
 async function submitTap(page, upn) {
   const username = page.locator('input[name="loginfmt"]:visible');
-  const tapInput = page.locator('input[name="passwd"]:visible, input[name="otc"]:visible, #idTxtBx_SAOTCC_OTC:visible').first();
+  const tapInput = page.locator(TAP_INPUT_SELECTOR).first();
   await Promise.any([
     username.waitFor({ state: "visible", timeout: 30000 }),
     tapInput.waitFor({ state: "visible", timeout: 30000 })
@@ -130,7 +142,7 @@ async function submitTap(page, upn) {
 
   await tapInput.waitFor({ state: "visible", timeout: 30000 });
   await tapInput.fill(temporaryAccessPass);
-  await page.locator("#idSIButton9").click();
+  await clickTapSignIn(page);
 }
 
 async function advancePostAuthentication(page) {
