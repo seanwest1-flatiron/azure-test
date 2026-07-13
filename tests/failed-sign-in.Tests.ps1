@@ -13,10 +13,11 @@ Describe 'Failed sign-in payload' {
             if ($Uri -like '*/version.json?nonce=*') { return [pscustomobject]@{ payloadVersion = '2026.07.12.9' } }
             if ($Uri -like '*/payloads/tenant-seed.json?version=*') {
                 return [pscustomobject]@{
-                    failedSignInLab = [pscustomobject]@{ clientId = 'client-id'; userPrincipalName = 'lisa.simpson@corywest.onmicrosoft.com' }
-                    users = @([pscustomobject]@{ userPrincipalName = 'lisa.simpson@corywest.onmicrosoft.com' })
+                    failedSignInLab = [pscustomobject]@{ applicationDisplayName = 'After Party Failed Sign-In Generator'; userAlias = 'lisa.simpson' }
+                    users = @([pscustomobject]@{ userAlias = 'lisa.simpson' })
                 }
             }
+            if ($Uri -like 'https://graph.microsoft.com/v1.0/applications?*') { return [pscustomobject]@{ value = @([pscustomobject]@{ appId = 'client-id'; displayName = 'After Party Failed Sign-In Generator'; isFallbackPublicClient = $true; signInAudience = 'AzureADMyOrg' }) } }
             if ($Uri -eq 'https://login.microsoftonline.com/tenant-id/oauth2/v2.0/token') {
                 $global:AfterPartyInvalidPasswords += [string]$Body.password
                 $record = [Management.Automation.ErrorRecord]::new(
@@ -33,13 +34,13 @@ Describe 'Failed sign-in payload' {
     }
 
     It 'treats one invalid-credential response as a successful lab run' {
-        $output = & $payloadPath -GraphAccessToken $graphAccessToken
+        $output = & $payloadPath -GraphAccessToken $graphAccessToken -TenantDomain 'student.onmicrosoft.com'
 
-        @($output | Where-Object { $_ -match '^Attempt 1 of 1 recorded for lisa\.simpson@corywest\.onmicrosoft\.com at .+\. Expected invalid-credentials response received: AADSTS50126\. Correlation ID: correlation-id$' }).Count | Should -Be 1
+        @($output | Where-Object { $_ -match '^Attempt 1 of 1 recorded for lisa\.simpson@student\.onmicrosoft\.com at .+\. Expected invalid-credentials response received: AADSTS50126\. Correlation ID: correlation-id$' }).Count | Should -Be 1
         Should -Invoke Invoke-RestMethod -Times 1 -ParameterFilter {
             $Uri -eq 'https://login.microsoftonline.com/tenant-id/oauth2/v2.0/token' -and
             $Method -eq 'POST' -and
-            $Body.username -eq 'lisa.simpson@corywest.onmicrosoft.com' -and
+            $Body.username -eq 'lisa.simpson@student.onmicrosoft.com' -and
             $Body.password -eq 'bad-password-lisa.simpson' -and
             $Body.grant_type -eq 'password'
         }
@@ -47,7 +48,7 @@ Describe 'Failed sign-in payload' {
     }
 
     It 'submits three sequential requests with one invalid password for the operation' {
-        $output = & $payloadPath -GraphAccessToken $graphAccessToken -AttemptCount 3
+        $output = & $payloadPath -GraphAccessToken $graphAccessToken -TenantDomain 'student.onmicrosoft.com' -AttemptCount 3
 
         Should -Invoke Invoke-RestMethod -Times 3 -ParameterFilter {
             $Uri -eq 'https://login.microsoftonline.com/tenant-id/oauth2/v2.0/token' -and $Method -eq 'POST'
@@ -55,8 +56,8 @@ Describe 'Failed sign-in payload' {
         @($global:AfterPartyInvalidPasswords | Select-Object -Unique).Count | Should -Be 1
         $global:AfterPartyInvalidPasswords[0] | Should -Be 'bad-password-lisa.simpson'
         $output.Count | Should -Be 3
-        $output[0] | Should -Match '^Attempt 1 of 3 recorded for lisa\.simpson@corywest\.onmicrosoft\.com at .+\. Expected invalid-credentials response received: AADSTS50126\. Correlation ID: correlation-id$'
-        $output[1] | Should -Match '^Attempt 2 of 3 recorded for lisa\.simpson@corywest\.onmicrosoft\.com at .+\. Expected invalid-credentials response received: AADSTS50126\. Correlation ID: correlation-id$'
-        $output[2] | Should -Match '^Attempt 3 of 3 recorded for lisa\.simpson@corywest\.onmicrosoft\.com at .+\. Expected invalid-credentials response received: AADSTS50126\. Correlation ID: correlation-id$'
+        $output[0] | Should -Match '^Attempt 1 of 3 recorded for lisa\.simpson@student\.onmicrosoft\.com at .+\. Expected invalid-credentials response received: AADSTS50126\. Correlation ID: correlation-id$'
+        $output[1] | Should -Match '^Attempt 2 of 3 recorded for lisa\.simpson@student\.onmicrosoft\.com at .+\. Expected invalid-credentials response received: AADSTS50126\. Correlation ID: correlation-id$'
+        $output[2] | Should -Match '^Attempt 3 of 3 recorded for lisa\.simpson@student\.onmicrosoft\.com at .+\. Expected invalid-credentials response received: AADSTS50126\. Correlation ID: correlation-id$'
     }
 }

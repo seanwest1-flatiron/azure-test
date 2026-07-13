@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 process.env.AFTER_PARTY_WORKER_TEST = "1";
-const { boundedText, sanitizedUrl, collectPageDiagnostic } = await import("../payloads/browser-failed-sign-in-worker.mjs");
+const { boundedText, sanitizedUrl, collectPageDiagnostic, tenantUserPrincipalName, invalidPasswordForAlias } = await import("../payloads/browser-failed-sign-in-worker.mjs");
+
+test("builds tenant-relative identities and one deterministic invalid password from the alias", () => {
+  assert.equal(tenantUserPrincipalName("lisa.simpson", "student.onmicrosoft.com"), "lisa.simpson@student.onmicrosoft.com");
+  assert.equal(invalidPasswordForAlias("lisa.simpson"), "bad-password-lisa.simpson");
+  assert.equal(invalidPasswordForAlias("lisa.simpson"), invalidPasswordForAlias("lisa.simpson"));
+});
 
 test("browser diagnostics bound visible state and remove authorization query values", async () => {
   assert.equal(sanitizedUrl("https://login.microsoftonline.com/tenant/oauth2/v2.0/authorize?code=secret&state=state"), "https://login.microsoftonline.com/tenant/oauth2/v2.0/authorize");

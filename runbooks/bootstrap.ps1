@@ -13,7 +13,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$installedRunnerVersion = '2026.07.13.2'
+$installedRunnerVersion = '2026.07.13.3'
 $repositoryBase = 'https://raw.githubusercontent.com/seanwest1-flatiron/azure-test/main'
 $manifest = Invoke-RestMethod -Method GET -Uri "$repositoryBase/version.json?nonce=$([Guid]::NewGuid().ToString('N'))"
 if ([string]::IsNullOrWhiteSpace([string]$manifest.payloadVersion)) {
@@ -46,8 +46,22 @@ if ([string]::IsNullOrWhiteSpace($tokenResponse.access_token)) {
     throw 'Azure managed identity endpoint did not return a Graph access token.'
 }
 
+$domainResponse = Invoke-RestMethod `
+    -Method GET `
+    -Uri 'https://graph.microsoft.com/v1.0/domains?$select=id,isDefault,isInitial,isVerified' `
+    -Headers @{ Authorization = "Bearer $($tokenResponse.access_token)" }
+$verifiedDomains = @($domainResponse.value | Where-Object { $_.isVerified })
+$resolvedDomain = @($verifiedDomains | Where-Object { $_.isInitial } | Sort-Object id | Select-Object -First 1)
+if (-not $resolvedDomain) { $resolvedDomain = @($verifiedDomains | Where-Object { $_.isDefault } | Sort-Object id | Select-Object -First 1) }
+if (-not $resolvedDomain) { $resolvedDomain = @($verifiedDomains | Sort-Object id | Select-Object -First 1) }
+$tenantDomain = [string]$resolvedDomain.id
+if ([string]::IsNullOrWhiteSpace($tenantDomain) -or [Uri]::CheckHostName($tenantDomain) -ne [UriHostNameType]::Dns) {
+    throw 'Microsoft Graph did not return a usable verified tenant domain.'
+}
+Write-Output "Resolved tenant domain: $tenantDomain"
+
 $payload = [ScriptBlock]::Create($labSource)
-$payloadParameters = @{ GraphAccessToken = $tokenResponse.access_token }
+$payloadParameters = @{ GraphAccessToken = $tokenResponse.access_token; TenantDomain = $tenantDomain }
 if ($LabPath -eq 'payloads/browser-failed-sign-in.ps1') {
     if ([string]::IsNullOrWhiteSpace($SubscriptionId) -or [string]::IsNullOrWhiteSpace($ResourceGroup)) {
         throw 'The browser failed sign-in payload requires the selected Azure subscription and resource group.'

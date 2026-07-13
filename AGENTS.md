@@ -1,8 +1,10 @@
 # Working instructions
 
-- Inspect the repository and its existing conventions before choosing an implementation.
-- Run relevant repository tests, checks, and validation before completing work.
-- Commit and push completed work by default, unless the task explicitly says not to.
-- Do not perform live tenant operations, deployments, authentication attempts, or other externally consequential actions unless the task explicitly calls for them.
-- Keep version scopes separate: `runnerVersion` for runner infrastructure, bootstrap, roles, and permissions; `payloadVersion` for runtime payloads; and `tenantBaselineVersion` for tenant baseline changes. Bump only the versions affected by the change.
-- “After Party” is permitted platform and tenant branding. Tenant-visible users, messages, files, incidents, and activity must look functionally real; do not call them simulations, exercises, tests, or training unless real Microsoft product wording does so.
+- Read [docs/project-overview.md](docs/project-overview.md) and inspect existing conventions before implementing. Make focused, complete changes and handle normal implementation decisions independently.
+- Run relevant tests and checks. Fix clear, localized issues within scope.
+- Commit and push completed work by default unless the prompt says otherwise. The normal GitHub Pages deployment triggered by pushing is expected.
+- Do not independently run labs, initiate authentication attempts, deploy resources, modify a live Azure or Microsoft 365 tenant, or perform other live tenant validation unless explicitly requested.
+- Stop only when required information is missing, an external limitation blocks completion, or proceeding risks a significant unintended change.
+- Keep version responsibilities distinct: `runnerVersion` covers runner infrastructure, bootstrap, roles, and permissions; `payloadVersion` covers runtime payloads; `tenantBaselineVersion` covers the provisioned tenant baseline. Bump only affected versions.
+- Product invariant: students use their own isolated tenants. `corywest.onmicrosoft.com` and its tenant, subscription, resource-group, and object IDs are development values, never universal constants. Portable operations must derive tenant values from the signed-in environment or explicit environment configuration.
+- “After Party” is permitted platform and tenant branding. Tenant-visible users, messages, files, incidents, and activity should look functionally real and should not be unnecessarily labeled as simulations, exercises, tests, or training.

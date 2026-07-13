@@ -4,6 +4,8 @@ param(
     [Parameter(Mandatory)]
     [string] $GraphAccessToken,
     [Parameter(Mandatory)]
+    [string] $TenantDomain,
+    [Parameter(Mandatory)]
     [string] $SubscriptionId,
     [Parameter(Mandatory)]
     [string] $ResourceGroup,
@@ -19,12 +21,18 @@ if ([string]::IsNullOrWhiteSpace([string]$manifest.payloadVersion)) { throw 'The
 $payloadVersion = [string]$manifest.payloadVersion
 $baselineUri = "$repositoryBase/payloads/tenant-seed.json?version=$([Uri]::EscapeDataString($payloadVersion))"
 $baseline = Invoke-RestMethod -Method GET -Uri $baselineUri
-if ([string]::IsNullOrWhiteSpace([string]$baseline.failedSignInLab.clientId) -or [string]::IsNullOrWhiteSpace([string]$baseline.failedSignInLab.userPrincipalName)) {
+if ([string]::IsNullOrWhiteSpace([string]$baseline.failedSignInLab.applicationDisplayName) -or [string]::IsNullOrWhiteSpace([string]$baseline.failedSignInLab.userAlias)) {
     throw 'The tenant baseline does not contain browser failed sign-in configuration.'
 }
-if (@($baseline.users | Where-Object { $_.userPrincipalName -eq $baseline.failedSignInLab.userPrincipalName }).Count -ne 1) {
-    throw "The browser failed sign-in target '$($baseline.failedSignInLab.userPrincipalName)' is not a configured baseline user."
+if (@($baseline.users | Where-Object { $_.userAlias -eq $baseline.failedSignInLab.userAlias }).Count -ne 1) {
+    throw "The browser failed sign-in target alias '$($baseline.failedSignInLab.userAlias)' is not a configured baseline user."
 }
+$userPrincipalName = "$($baseline.failedSignInLab.userAlias)@$TenantDomain"
+$escapedDisplayName = [string]$baseline.failedSignInLab.applicationDisplayName -replace "'", "''"
+$applicationFilter = [Uri]::EscapeDataString("displayName eq '$escapedDisplayName'")
+$applications = @((Invoke-RestMethod -Method GET -Uri "https://graph.microsoft.com/v1.0/applications?`$filter=$applicationFilter&`$select=appId,displayName,isFallbackPublicClient,signInAudience" -Headers @{ Authorization = "Bearer $GraphAccessToken" }).value)
+if ($applications.Count -ne 1 -or [string]::IsNullOrWhiteSpace([string]$applications[0].appId)) { throw "The dedicated failed sign-in application '$($baseline.failedSignInLab.applicationDisplayName)' was not found uniquely in the tenant." }
+$clientId = [string]$applications[0].appId
 
 function Get-JwtClaim {
     param([string] $AccessToken, [string] $Name)
@@ -109,6 +117,9 @@ $containerGroup = @{
                 environmentVariables = @(
                     @{ name = 'TENANT_ID'; value = $tenantId },
                     @{ name = 'BASELINE_URL'; value = $baselineUri },
+                    @{ name = 'TENANT_DOMAIN'; value = $TenantDomain },
+                    @{ name = 'CLIENT_ID'; value = $clientId },
+                    @{ name = 'USER_ALIAS'; value = [string]$baseline.failedSignInLab.userAlias },
                     @{ name = 'ATTEMPT_COUNT'; value = [string]$AttemptCount }
                 )
             }
@@ -150,7 +161,7 @@ try {
     if ($AttemptCount -eq 1 -and $result.result -ne 'credentials_rejected') { throw "The browser worker did not confirm credential rejection. Result: $($result.result)" }
     if ($AttemptCount -eq 3) {
         if ($result.result -ne 'attempts_submitted' -or @($result.diagnostic.attempts).Count -ne 3) { throw "The browser worker did not submit three confirmed sign-in attempts. Result: $($result.result)" }
-        $verification = Invoke-GraphVerification -UserPrincipalName $result.upn -ApplicationId $baseline.failedSignInLab.clientId -OperationStartedUtc $operationStartedUtc
+        $verification = Invoke-GraphVerification -UserPrincipalName $result.upn -ApplicationId $clientId -OperationStartedUtc $operationStartedUtc
         Write-Output "Three browser failed sign-ins submitted for $($result.upn). Worker outbound IP: $($result.diagnostic.workerOutboundIp). Entra verification: $verification."
     } else {
         Write-Output "Browser failed sign-in confirmed for $($result.upn) at $($result.timestampUtc)."

@@ -9,6 +9,8 @@ Describe 'Tenant seed license SKU matching' {
     BeforeEach {
         $global:AfterPartyGraphFailure = $false
         $global:AfterPartyDetectionRule = $null
+        $global:AfterPartyApplications = @()
+        $global:AfterPartyServicePrincipals = @()
         $global:AfterPartyTestSeed = [pscustomobject]@{
             licenses = [pscustomobject]@{
                 businessPremium = [pscustomobject]@{ displayName = 'Microsoft 365 Business Premium'; skuPartNumberCandidates = @('SPB', 'O365_BUSINESS_PREMIUM') }
@@ -57,9 +59,22 @@ Describe 'Tenant seed license SKU matching' {
             if ($Uri -like 'https://graph.microsoft.com/v1.0/groups/group-id/members?*') {
                 return [pscustomobject]@{ value = @([pscustomobject]@{ id = 'socky-id' }) }
             }
-            if ($Uri -like 'https://graph.microsoft.com/v1.0/users/socky*' -and $Method -eq 'GET') { return [pscustomobject]@{ id = 'socky-id'; userPrincipalName = 'socky@corywest.onmicrosoft.com' } }
+            if ($Uri -like 'https://graph.microsoft.com/v1.0/users/socky*' -and $Method -eq 'GET') { return [pscustomobject]@{ id = 'socky-id'; userPrincipalName = 'socky@student.onmicrosoft.com' } }
             if ($Uri -eq 'https://graph.microsoft.com/v1.0/users/socky-id' -and $Method -eq 'PATCH') { return [pscustomobject]@{} }
             if ($Uri -eq 'https://graph.microsoft.com/v1.0/groups/group-id/members/$ref' -and $Method -eq 'POST') { return [pscustomobject]@{} }
+            if ($Uri -like 'https://graph.microsoft.com/v1.0/applications?*' -and $Method -eq 'GET') { return [pscustomobject]@{ value = $global:AfterPartyApplications } }
+            if ($Uri -eq 'https://graph.microsoft.com/v1.0/applications' -and $Method -eq 'POST') {
+                $properties = $Body | ConvertFrom-Json
+                $application = [pscustomobject]@{ id = 'failed-app-object-id'; appId = 'dedicated-app-id'; displayName = $properties.displayName; isFallbackPublicClient = $properties.isFallbackPublicClient; signInAudience = $properties.signInAudience; publicClient = $properties.publicClient }
+                $global:AfterPartyApplications = @($application)
+                return $application
+            }
+            if ($Uri -eq 'https://graph.microsoft.com/v1.0/applications/failed-app-object-id' -and $Method -eq 'PATCH') { return [pscustomobject]@{} }
+            if ($Uri -like 'https://graph.microsoft.com/v1.0/servicePrincipals?*' -and $Method -eq 'GET') { return [pscustomobject]@{ value = $global:AfterPartyServicePrincipals } }
+            if ($Uri -eq 'https://graph.microsoft.com/v1.0/servicePrincipals' -and $Method -eq 'POST') {
+                $global:AfterPartyServicePrincipals = @([pscustomobject]@{ id = 'failed-sp-id'; appId = 'dedicated-app-id' })
+                return $global:AfterPartyServicePrincipals[0]
+            }
             if ($Uri -eq 'https://graph.microsoft.com/beta/security/rules/detectionRules/after-party-lisa-aadsts50126-three-in-one-hour') {
                 if ($Method -eq 'GET' -and $null -ne $global:AfterPartyDetectionRule) { return $global:AfterPartyDetectionRule }
                 if ($Method -eq 'GET') {
@@ -82,7 +97,7 @@ Describe 'Tenant seed license SKU matching' {
     }
 
     It 'selects SPB and the current combined Defender and Purview suite SKU' {
-        $output = & $seedScriptPath -GraphAccessToken $graphAccessToken
+        $output = & $seedScriptPath -GraphAccessToken $graphAccessToken -TenantDomain 'student.onmicrosoft.com'
 
         Should -Invoke Invoke-RestMethod -Times 1 -ParameterFilter {
             $Uri -eq 'https://graph.microsoft.com/v1.0/groups/group-id/assignLicense' -and
@@ -95,7 +110,7 @@ Describe 'Tenant seed license SKU matching' {
     }
 
     It 'keeps Password Rule Settings automation inactive during tenant preparation' {
-        $output = & $seedScriptPath -GraphAccessToken $graphAccessToken
+        $output = & $seedScriptPath -GraphAccessToken $graphAccessToken -TenantDomain 'student.onmicrosoft.com'
 
         Should -Invoke Invoke-RestMethod -Times 0 -ParameterFilter { ([string]$Uri) -match '/groupSettings' }
         ($output -join "`n") | Should -Not -Match 'Password Rule Settings'
@@ -104,12 +119,12 @@ Describe 'Tenant seed license SKU matching' {
     It 'reports the method, endpoint, status, Graph code, and Graph message' {
         $global:AfterPartyGraphFailure = $true
 
-        { & $seedScriptPath -GraphAccessToken $graphAccessToken } | Should -Throw '*GET https://graph.microsoft.com/v1.0/subscribedSkus; HTTP 403; code: Authorization_RequestDenied; message: Insufficient privileges to complete the operation.*'
+        { & $seedScriptPath -GraphAccessToken $graphAccessToken -TenantDomain 'student.onmicrosoft.com' } | Should -Throw '*GET https://graph.microsoft.com/v1.0/subscribedSkus; HTTP 403; code: Authorization_RequestDenied; message: Insufficient privileges to complete the operation.*'
     }
 
     It 'omits an empty optional surname when updating a user' {
         $global:AfterPartyTestSeed.users = @([pscustomobject]@{
-            userPrincipalName = 'socky@corywest.onmicrosoft.com'
+            userAlias = 'socky'
             displayName = 'Socky'
             givenName = 'Socky'
             surname = ''
@@ -118,7 +133,7 @@ Describe 'Tenant seed license SKU matching' {
             mailNickname = 'socky'
         })
 
-        & $seedScriptPath -GraphAccessToken $graphAccessToken
+        & $seedScriptPath -GraphAccessToken $graphAccessToken -TenantDomain 'student.onmicrosoft.com'
 
         Should -Invoke Invoke-RestMethod -Times 1 -ParameterFilter {
             $Uri -eq 'https://graph.microsoft.com/v1.0/users/socky-id' -and
@@ -126,6 +141,21 @@ Describe 'Tenant seed license SKU matching' {
             $Body -match '"displayName"\s*:\s*"Socky"' -and
             $Body -notmatch '"surname"'
         }
+    }
+
+    It 'reuses and repairs the dedicated tenant-local failed sign-in application' {
+        $global:AfterPartyTestSeed.failedSignInLab = [pscustomobject]@{ applicationDisplayName = 'After Party Failed Sign-In Generator'; userAlias = 'lisa.simpson' }
+        $global:AfterPartyApplications = @([pscustomobject]@{ id = 'failed-app-object-id'; appId = 'dedicated-app-id'; displayName = 'After Party Failed Sign-In Generator'; isFallbackPublicClient = $false; signInAudience = 'AzureADMyOrg'; publicClient = [pscustomobject]@{ redirectUris = @() } })
+        $global:AfterPartyServicePrincipals = @([pscustomobject]@{ id = 'failed-sp-id'; appId = 'dedicated-app-id' })
+
+        & $seedScriptPath -GraphAccessToken $graphAccessToken -TenantDomain 'student.onmicrosoft.com'
+
+        Should -Invoke Invoke-RestMethod -Times 1 -ParameterFilter {
+            $Uri -eq 'https://graph.microsoft.com/v1.0/applications/failed-app-object-id' -and $Method -eq 'PATCH' -and
+            $Body -match '"isFallbackPublicClient"\s*:\s*true' -and $Body -match 'http://localhost'
+        }
+        Should -Invoke Invoke-RestMethod -Times 0 -ParameterFilter { $Uri -eq 'https://graph.microsoft.com/v1.0/applications' -and $Method -eq 'POST' }
+        Should -Invoke Invoke-RestMethod -Times 0 -ParameterFilter { $Uri -eq 'https://graph.microsoft.com/v1.0/servicePrincipals' -and $Method -eq 'POST' }
     }
 
     It 'creates the Lisa invalid-password detection disabled with no automated response actions' {
@@ -141,9 +171,9 @@ Describe 'Tenant seed license SKU matching' {
                 category = 'CredentialAccess'
             }
         }
-        $global:AfterPartyTestSeed.failedSignInLab = [pscustomobject]@{ clientId = 'dedicated-app-id'; userPrincipalName = 'lisa.simpson@corywest.onmicrosoft.com' }
+        $global:AfterPartyTestSeed.failedSignInLab = [pscustomobject]@{ applicationDisplayName = 'After Party Failed Sign-In Generator'; userAlias = 'lisa.simpson' }
 
-        $output = & $seedScriptPath -GraphAccessToken $graphAccessToken
+        $output = & $seedScriptPath -GraphAccessToken $graphAccessToken -TenantDomain 'student.onmicrosoft.com'
 
         Should -Invoke Invoke-RestMethod -Times 1 -ParameterFilter {
             $Uri -eq 'https://graph.microsoft.com/beta/security/rules/detectionRules' -and
@@ -152,9 +182,15 @@ Describe 'Tenant seed license SKU matching' {
             $Body -match 'EntraIdSignInEvents' -and
             $Body -match 'ErrorCode == 50126' -and
             $Body -match 'FailureCount >= 3' -and
-            $Body -match 'lisa\.simpson@corywest\.onmicrosoft\.com' -and
+            $Body -match 'lisa\.simpson@student\.onmicrosoft\.com' -and
             $Body -match 'dedicated-app-id' -and
             $Body -notmatch 'responseActions'
+        }
+        Should -Invoke Invoke-RestMethod -Times 1 -ParameterFilter {
+            $Uri -eq 'https://graph.microsoft.com/v1.0/applications' -and $Method -eq 'POST' -and
+            $Body -match 'After Party Failed Sign-In Generator' -and
+            $Body -match '"isFallbackPublicClient"\s*:\s*true' -and
+            $Body -match 'http://localhost'
         }
         ($output -join "`n") | Should -Match 'Custom detection: after-party-lisa-aadsts50126-three-in-one-hour is disabled \(alert-only\)\.'
     }

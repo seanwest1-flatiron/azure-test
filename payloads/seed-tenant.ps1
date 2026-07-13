@@ -2,7 +2,9 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [string] $GraphAccessToken
+    [string] $GraphAccessToken,
+    [Parameter(Mandatory)]
+    [string] $TenantDomain
 )
 
 $ErrorActionPreference = 'Stop'
@@ -14,6 +16,15 @@ if ([string]::IsNullOrWhiteSpace([string]$manifest.payloadVersion)) {
 $seedUri = "$repositoryBase/payloads/tenant-seed.json?version=$([Uri]::EscapeDataString([string]$manifest.payloadVersion))"
 $seed = Invoke-RestMethod -Method GET -Uri $seedUri
 $headers = @{ Authorization = "Bearer $GraphAccessToken" }
+if ([string]::IsNullOrWhiteSpace($TenantDomain) -or [Uri]::CheckHostName($TenantDomain) -ne [UriHostNameType]::Dns) {
+    throw 'TenantDomain must be a valid DNS domain resolved from the connected tenant.'
+}
+
+function Get-UserPrincipalName {
+    param([string] $UserAlias)
+    if ($UserAlias -notmatch '^[a-zA-Z0-9][a-zA-Z0-9._-]*$') { throw "Invalid baseline user alias '$UserAlias'." }
+    return "$UserAlias@$TenantDomain"
+}
 
 function Get-AccessTokenRoles {
     param([string] $AccessToken)
@@ -114,10 +125,39 @@ function New-TemporaryPassword {
     "Ap!$random`9z"
 }
 
+function Get-FailedSignInApplication {
+    param($Definition)
+    if ([string]::IsNullOrWhiteSpace([string]$Definition.applicationDisplayName)) {
+        throw 'The tenant baseline does not contain a failed sign-in application display name.'
+    }
+    $escapedDisplayName = [string]$Definition.applicationDisplayName -replace "'", "''"
+    $filter = [Uri]::EscapeDataString("displayName eq '$escapedDisplayName'")
+    $applications = @((Invoke-Graph -Method GET -Path "/applications?`$filter=$filter&`$select=id,appId,displayName,isFallbackPublicClient,signInAudience,publicClient").value)
+    if ($applications.Count -gt 1) { throw "More than one application named '$($Definition.applicationDisplayName)' exists in the tenant." }
+    $properties = @{
+        displayName = [string]$Definition.applicationDisplayName
+        signInAudience = 'AzureADMyOrg'
+        isFallbackPublicClient = $true
+        publicClient = @{ redirectUris = @('http://localhost') }
+    }
+    if ($applications.Count -eq 0) {
+        $application = Invoke-Graph -Method POST -Path '/applications' -Body $properties
+    } else {
+        $application = $applications[0]
+        Invoke-Graph -Method PATCH -Path "/applications/$($application.id)" -Body $properties | Out-Null
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$application.appId)) { throw 'Microsoft Graph did not return the failed sign-in application ID.' }
+    $appIdFilter = [Uri]::EscapeDataString("appId eq '$($application.appId)'")
+    $servicePrincipal = @((Invoke-Graph -Method GET -Path "/servicePrincipals?`$filter=$appIdFilter&`$select=id,appId").value) | Select-Object -First 1
+    if (-not $servicePrincipal) { Invoke-Graph -Method POST -Path '/servicePrincipals' -Body @{ appId = [string]$application.appId } | Out-Null }
+    return $application
+}
+
 function Get-SeedUser {
     param($SeedUser)
+    $userPrincipalName = Get-UserPrincipalName -UserAlias ([string]$SeedUser.userAlias)
     try {
-        $user = Invoke-Graph -Method GET -Path "/users/$([Uri]::EscapeDataString($SeedUser.userPrincipalName))?`$select=id,userPrincipalName"
+        $user = Invoke-Graph -Method GET -Path "/users/$([Uri]::EscapeDataString($userPrincipalName))?`$select=id,userPrincipalName"
         $profile = @{
             displayName = $SeedUser.displayName
             givenName = $SeedUser.givenName
@@ -140,7 +180,7 @@ function Get-SeedUser {
         department = $SeedUser.department
         usageLocation = 'US'
         mailNickname = $SeedUser.mailNickname
-        userPrincipalName = $SeedUser.userPrincipalName
+        userPrincipalName = $userPrincipalName
         passwordProfile = @{ password = (New-TemporaryPassword); forceChangePasswordNextSignIn = $true }
     }
     if (-not [string]::IsNullOrWhiteSpace([string]$SeedUser.surname)) { $newUserProperties.surname = $SeedUser.surname }
@@ -269,15 +309,15 @@ function Set-PasswordRuleSettings {
 }
 
 function Set-LisaFailedSignInDetection {
-    param($Definition, $Lab)
-    if ([string]::IsNullOrWhiteSpace([string]$Definition.id) -or [string]::IsNullOrWhiteSpace([string]$Lab.userPrincipalName) -or [string]::IsNullOrWhiteSpace([string]$Lab.clientId)) {
+    param($Definition, [string] $UserPrincipalName, [string] $ApplicationId)
+    if ([string]::IsNullOrWhiteSpace([string]$Definition.id) -or [string]::IsNullOrWhiteSpace($UserPrincipalName) -or [string]::IsNullOrWhiteSpace($ApplicationId)) {
         throw 'The tenant baseline does not contain valid Lisa failed-sign-in detection configuration.'
     }
     $query = @"
 EntraIdSignInEvents
 | where Timestamp > ago($([int]$Definition.windowMinutes)m)
-| where AccountUpn =~ '$($Lab.userPrincipalName -replace "'", "''")'
-| where ApplicationId == '$($Lab.clientId -replace "'", "''")'
+| where AccountUpn =~ '$($UserPrincipalName -replace "'", "''")'
+| where ApplicationId == '$($ApplicationId -replace "'", "''")'
 | where ErrorCode == 50126
 | summarize arg_max(Timestamp, ReportId), FailureCount = count(), CorrelationIds = make_set(CorrelationId, $([int]$Definition.threshold)) by AccountUpn, ApplicationId
 | where FailureCount >= $([int]$Definition.threshold)
@@ -329,16 +369,19 @@ if ($missingLicenses.Count -gt 0) {
     Invoke-GraphWithRetry -Method POST -Path "/groups/$($licensingGroup.id)/assignLicense" -Body @{ addLicenses = $missingLicenses; removeLicenses = @() } | Out-Null
 }
 
+$failedSignInApplication = $null
+if ($seed.failedSignInLab) { $failedSignInApplication = Get-FailedSignInApplication -Definition $seed.failedSignInLab }
+
 $created = 0
 $reused = 0
-$baselineUsersByUpn = @{}
+$baselineUsersByAlias = @{}
 foreach ($seedUser in $seed.users) {
     $result = Get-SeedUser -SeedUser $seedUser
     if ($result.Created) { $created += 1 } else { $reused += 1 }
-    $baselineUsersByUpn[([string]$seedUser.userPrincipalName).ToLowerInvariant()] = $result.User
+    $baselineUsersByAlias[([string]$seedUser.userAlias).ToLowerInvariant()] = $result.User
 }
 
-$allEmployeeIds = @($seed.users | ForEach-Object { [string]$baselineUsersByUpn[([string]$_.userPrincipalName).ToLowerInvariant()].id })
+$allEmployeeIds = @($seed.users | ForEach-Object { [string]$baselineUsersByAlias[([string]$_.userAlias).ToLowerInvariant()].id })
 $licensingMembership = Confirm-GroupMembership -GroupId $licensingGroup.id -ExpectedUserIds $allEmployeeIds
 
 $departmentGroupsCreated = 0
@@ -349,9 +392,9 @@ foreach ($department in $seed.departments) {
     $departmentGroupResult = Get-BaselineGroup -Definition $department -Microsoft365
     if ($departmentGroupResult.Created) { $departmentGroupsCreated += 1 }
     if ($departmentGroupResult.Repaired) { $departmentGroupsRepaired += 1 }
-    $departmentUserIds = foreach ($userPrincipalName in $department.memberUserPrincipalNames) {
-        $baselineUser = $baselineUsersByUpn[([string]$userPrincipalName).ToLowerInvariant()]
-        if (-not $baselineUser) { throw "Department '$($department.displayName)' references unknown baseline user '$userPrincipalName'." }
+    $departmentUserIds = foreach ($userAlias in $department.memberAliases) {
+        $baselineUser = $baselineUsersByAlias[([string]$userAlias).ToLowerInvariant()]
+        if (-not $baselineUser) { throw "Department '$($department.displayName)' references unknown baseline user alias '$userAlias'." }
         [string]$baselineUser.id
     }
     $membership = Confirm-GroupMembership -GroupId $departmentGroupResult.Group.id -ExpectedUserIds @($departmentUserIds)
@@ -361,8 +404,10 @@ foreach ($department in $seed.departments) {
 
 $customDetection = $null
 if ($seed.customDetections.lisaFailedSignIns) {
-    $customDetection = Set-LisaFailedSignInDetection -Definition $seed.customDetections.lisaFailedSignIns -Lab $seed.failedSignInLab
+    $failedSignInUpn = Get-UserPrincipalName -UserAlias ([string]$seed.failedSignInLab.userAlias)
+    $customDetection = Set-LisaFailedSignInDetection -Definition $seed.customDetections.lisaFailedSignIns -UserPrincipalName $failedSignInUpn -ApplicationId ([string]$failedSignInApplication.appId)
 }
 
 $detectionSummary = if ($customDetection) { " Custom detection: $($customDetection.Id) is $($customDetection.Status) (alert-only)." } else { '' }
-Write-Output "Tenant preparation complete. Users: $($seed.users.Count) configured ($created created, $reused repaired). Licensing: $($seed.licensingGroup.displayName) with $($licensingMembership.Verified)/$($seed.users.Count) baseline members and $($licenses.Count) license SKU(s). Departments: $($seed.departments.Count) Microsoft 365 groups ($departmentGroupsCreated created, $departmentGroupsRepaired repaired) with $departmentMembershipsVerified configured memberships ($departmentMembershipsAdded added).$detectionSummary"
+$applicationSummary = if ($failedSignInApplication) { " Failed sign-in application: $($seed.failedSignInLab.applicationDisplayName) configured." } else { '' }
+Write-Output "Tenant preparation complete for $TenantDomain. Users: $($seed.users.Count) configured ($created created, $reused repaired). Licensing: $($seed.licensingGroup.displayName) with $($licensingMembership.Verified)/$($seed.users.Count) baseline members and $($licenses.Count) license SKU(s). Departments: $($seed.departments.Count) Microsoft 365 groups ($departmentGroupsCreated created, $departmentGroupsRepaired repaired) with $departmentMembershipsVerified configured memberships ($departmentMembershipsAdded added).$applicationSummary$detectionSummary"

@@ -20,6 +20,8 @@ test("environment updates publish the cache-busted bootstrap runbook", () => {
 
 test("environment updates grant the custom detection permission to the runner", () => {
   assert.match(app, /"CustomDetection\.ReadWrite\.All"/);
+  assert.match(app, /"Domain\.Read\.All"/);
+  assert.match(app, /"Application\.ReadWrite\.All"/);
 });
 
 test("hides the application until the versioned stylesheet loads and reveals loader failures", () => {

@@ -3,6 +3,8 @@
 param(
     [Parameter(Mandatory)]
     [string] $GraphAccessToken,
+    [Parameter(Mandatory)]
+    [string] $TenantDomain,
     [Parameter()]
     [ValidateRange(1, 3)]
     [int] $AttemptCount = 1
@@ -17,12 +19,18 @@ if ([string]::IsNullOrWhiteSpace([string]$manifest.payloadVersion)) {
 $baselineUri = "$repositoryBase/payloads/tenant-seed.json?version=$([Uri]::EscapeDataString([string]$manifest.payloadVersion))"
 $baseline = Invoke-RestMethod -Method GET -Uri $baselineUri
 $lab = $baseline.failedSignInLab
-if ([string]::IsNullOrWhiteSpace([string]$lab.clientId) -or [string]::IsNullOrWhiteSpace([string]$lab.userPrincipalName)) {
+if ([string]::IsNullOrWhiteSpace([string]$lab.applicationDisplayName) -or [string]::IsNullOrWhiteSpace([string]$lab.userAlias)) {
     throw 'The tenant baseline does not contain failed sign-in lab configuration.'
 }
-if (@($baseline.users | Where-Object { $_.userPrincipalName -eq $lab.userPrincipalName }).Count -ne 1) {
-    throw "The failed sign-in target '$($lab.userPrincipalName)' is not a configured baseline user."
+if (@($baseline.users | Where-Object { $_.userAlias -eq $lab.userAlias }).Count -ne 1) {
+    throw "The failed sign-in target alias '$($lab.userAlias)' is not a configured baseline user."
 }
+$userPrincipalName = "$($lab.userAlias)@$TenantDomain"
+$escapedDisplayName = [string]$lab.applicationDisplayName -replace "'", "''"
+$filter = [Uri]::EscapeDataString("displayName eq '$escapedDisplayName'")
+$applications = @((Invoke-RestMethod -Method GET -Uri "https://graph.microsoft.com/v1.0/applications?`$filter=$filter&`$select=appId,displayName,isFallbackPublicClient,signInAudience" -Headers @{ Authorization = "Bearer $GraphAccessToken" }).value)
+if ($applications.Count -ne 1 -or [string]::IsNullOrWhiteSpace([string]$applications[0].appId)) { throw "The dedicated failed sign-in application '$($lab.applicationDisplayName)' was not found uniquely in the tenant." }
+$clientId = [string]$applications[0].appId
 
 function Get-TokenPayload {
     param([string] $AccessToken)
@@ -45,11 +53,11 @@ $tokenPayload = Get-TokenPayload -AccessToken $GraphAccessToken
 $tenantId = [string]$tokenPayload.tid
 if ([string]::IsNullOrWhiteSpace($tenantId)) { throw 'The managed identity Graph access token did not contain a tenant ID.' }
 $tokenEndpoint = "https://login.microsoftonline.com/$tenantId/oauth2/v2.0/token"
-$invalidPassword = "bad-password-$($lab.userPrincipalName.Split('@')[0])"
+$invalidPassword = "bad-password-$($lab.userAlias)"
 $form = @{
-    client_id = [string]$lab.clientId
+    client_id = $clientId
     scope = 'openid profile'
-    username = [string]$lab.userPrincipalName
+    username = $userPrincipalName
     password = $invalidPassword
     grant_type = 'password'
 }
@@ -75,6 +83,6 @@ for ($attempt = 1; $attempt -le $AttemptCount; $attempt += 1) {
         $entraCode = if ($response.error_description -match 'AADSTS[0-9]+') { $Matches[0] } else { 'invalid_grant' }
         if ($entraCode -ne 'AADSTS50126') { throw "The Entra token endpoint did not return AADSTS50126. Received: $entraCode" }
         if ([string]::IsNullOrWhiteSpace([string]$response.correlation_id)) { throw 'The Entra token endpoint did not return a correlation ID.' }
-        Write-Output "Attempt $attempt of $AttemptCount recorded for $($lab.userPrincipalName) at $attemptTimestampUtc. Expected invalid-credentials response received: $entraCode. Correlation ID: $($response.correlation_id)"
+        Write-Output "Attempt $attempt of $AttemptCount recorded for $userPrincipalName at $attemptTimestampUtc. Expected invalid-credentials response received: $entraCode. Correlation ID: $($response.correlation_id)"
     }
 }

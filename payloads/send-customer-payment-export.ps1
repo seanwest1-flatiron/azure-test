@@ -2,11 +2,13 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [string] $GraphAccessToken
+    [string] $GraphAccessToken,
+    [Parameter(Mandatory)]
+    [string] $TenantDomain
 )
 
 $ErrorActionPreference = 'Stop'
-$sender = 'kobe@corywest.onmicrosoft.com'
+$sender = "kobe@$TenantDomain"
 $recipient = 'test-customer-data@mailinator.com'
 $csv = @'
 CustomerId,CustomerName,CardNumber,ExpirationDate,RefundAmount,Currency

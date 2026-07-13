@@ -1,9 +1,20 @@
-import { randomUUID } from "node:crypto";
-
 const tenantId = process.env.TENANT_ID;
 const baselineUrl = process.env.BASELINE_URL;
+const tenantDomain = process.env.TENANT_DOMAIN;
+const configuredClientId = process.env.CLIENT_ID;
+const configuredUserAlias = process.env.USER_ALIAS;
 const MAX_PAGE_TEXT_LENGTH = 1200;
 const MAX_DIAGNOSTIC_ITEMS = 10;
+
+export function tenantUserPrincipalName(userAlias, domain) {
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(userAlias || "") || !/^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(domain || "")) throw new Error("Tenant-relative user configuration is invalid.");
+  return `${userAlias}@${domain}`;
+}
+
+export function invalidPasswordForAlias(userAlias) {
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(userAlias || "")) throw new Error("User alias is invalid.");
+  return `bad-password-${userAlias}`;
+}
 
 export function boundedText(value, maxLength = MAX_PAGE_TEXT_LENGTH) {
   const text = String(value || "")
@@ -103,7 +114,7 @@ async function runThreeAttempts({ chromium, clientId, upn, invalidPassword, auth
 }
 
 async function run() {
-  if (!tenantId || !baselineUrl) {
+  if (!tenantId || !baselineUrl || !tenantDomain || !configuredClientId || !configuredUserAlias) {
     fail("Worker configuration is incomplete.");
     return;
   }
@@ -122,12 +133,12 @@ async function run() {
     if (!response.ok) throw new Error(`Tenant baseline returned ${response.status}.`);
     const baseline = await response.json();
     const lab = baseline.failedSignInLab;
-    upn = lab?.userPrincipalName;
-    const clientId = lab?.clientId;
-    if (!upn || !clientId || !(baseline.users || []).some(user => user.userPrincipalName === upn)) throw new Error("Tenant baseline does not contain a valid browser failed sign-in target.");
+    upn = tenantUserPrincipalName(configuredUserAlias, tenantDomain);
+    const clientId = configuredClientId;
+    if (lab?.userAlias !== configuredUserAlias || !(baseline.users || []).some(user => user.userAlias === configuredUserAlias)) throw new Error("Tenant baseline does not contain a valid browser failed sign-in target.");
     progress.lastCompletedStage = "baseline_loaded";
 
-    const invalidPassword = `AfterParty-Invalid-${randomUUID().replaceAll("-", "")}`;
+    const invalidPassword = invalidPasswordForAlias(configuredUserAlias);
     const authorizeUrl = new URL(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize`);
     authorizeUrl.searchParams.set("client_id", clientId);
     authorizeUrl.searchParams.set("response_type", "code");

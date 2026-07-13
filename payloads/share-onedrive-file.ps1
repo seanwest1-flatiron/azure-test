@@ -2,12 +2,14 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [string] $GraphAccessToken
+    [string] $GraphAccessToken,
+    [Parameter(Mandatory)]
+    [string] $TenantDomain
 )
 
 $ErrorActionPreference = 'Stop'
-$owner = 'kobe@corywest.onmicrosoft.com'
-$recipient = 'cory@corywest.onmicrosoft.com'
+$owner = "kobe@$TenantDomain"
+$recipient = "cory@$TenantDomain"
 $fileName = 'AfterParty-OneDrive-Share-{0}.txt' -f (Get-Date -Format 'yyyyMMdd-HHmmss')
 $fileContent = "Shared file created at $(Get-Date -Format o)."
 $ownerPath = [Uri]::EscapeDataString($owner)

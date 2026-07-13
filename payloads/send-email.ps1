@@ -2,12 +2,14 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [string] $GraphAccessToken
+    [string] $GraphAccessToken,
+    [Parameter(Mandatory)]
+    [string] $TenantDomain
 )
 
 $ErrorActionPreference = 'Stop'
-$sender = 'kobe@corywest.onmicrosoft.com'
-$recipient = 'cory@corywest.onmicrosoft.com'
+$sender = "kobe@$TenantDomain"
+$recipient = "cory@$TenantDomain"
 $sendMailUri = "https://graph.microsoft.com/v1.0/users/$sender/sendMail"
 $message = @{
     message = @{

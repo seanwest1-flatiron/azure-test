@@ -2,11 +2,13 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [string] $GraphAccessToken
+    [string] $GraphAccessToken,
+    [Parameter(Mandatory)]
+    [string] $TenantDomain
 )
 
 $ErrorActionPreference = 'Stop'
-$users = @('kobe@corywest.onmicrosoft.com', 'cory@corywest.onmicrosoft.com')
+$users = @("kobe@$TenantDomain", "cory@$TenantDomain")
 $batchId = [Guid]::NewGuid().ToString()
 $reportingGuide = 'https://learn.microsoft.com/en-us/defender-office-365/submissions-outlook-report-messages'
 $scenarios = @(
