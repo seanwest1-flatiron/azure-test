@@ -251,15 +251,14 @@ switch ([string]$existing.status) {
     }
     'disabled' {
         $needsRepair = Test-RuleNeedsRepair -ExistingRule $existing
-        $repairRule = $rule.Clone()
-        $repairRule.Remove('@odata.type')
-        $repairRule.Remove('id')
-        $repairRule.detectionAction = @{
-            alertTemplate = $alertTemplate
-            automatedActions = $null
-            responseActions = $null
+        if ($needsRepair) {
+            $repairRule = $rule.Clone()
+            $repairRule.Remove('@odata.type')
+            $repairRule.Remove('id')
+            Invoke-Graph -Method PATCH -Path $path -Body $repairRule -ApiVersion beta | Out-Null
+        } else {
+            Invoke-Graph -Method PATCH -Path $path -Body @{ status = 'enabled' } -ApiVersion beta | Out-Null
         }
-        Invoke-Graph -Method PATCH -Path $path -Body $repairRule -ApiVersion beta | Out-Null
         $verified = Invoke-Graph -Method GET -Path $path -ApiVersion beta
         Assert-AlertOnlyRule -VerifiedRule $verified -ExpectedStatus 'enabled'
         $outcome = if ($needsRepair) { 'repaired and enabled' } else { 'enabled' }

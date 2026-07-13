@@ -82,15 +82,18 @@ Describe 'Failed sign-in custom detection payload' {
         ($output -join "`n") | Should -Match 'normal immediate first evaluation'
     }
 
-    It 'enables an existing disabled rule without an undocumented immediate-run request' {
+    It 'enables an existing disabled rule with a status-only PATCH and no undocumented immediate-run request' {
         & $payloadPath -GraphAccessToken 'graph-token' -TenantDomain 'school.onmicrosoft.com' | Out-Null
         $global:AfterPartyDetectionRule.status = 'disabled'
 
         $output = & $payloadPath -GraphAccessToken 'graph-token' -TenantDomain 'school.onmicrosoft.com'
 
         Should -Invoke Invoke-RestMethod -Times 1 -ParameterFilter {
-            $Uri -eq 'https://graph.microsoft.com/beta/security/rules/detectionRules/after-party-lisa-aadsts50126-three-in-one-hour' -and
-            $Method -eq 'PATCH' -and $Body -match '"status"\s*:\s*"enabled"'
+            if ($Uri -ne 'https://graph.microsoft.com/beta/security/rules/detectionRules/after-party-lisa-aadsts50126-three-in-one-hour' -or $Method -ne 'PATCH') { return $false }
+            $patch = $Body | ConvertFrom-Json
+            @($patch.psobject.Properties).Count -eq 1 -and
+            $patch.status -eq 'enabled' -and
+            $Body -notmatch 'responseActions|automatedActions|queryCondition|detectionAction'
         }
         Should -Invoke Invoke-RestMethod -Times 0 -ParameterFilter { $Uri -match '/detectionRules/.+/(run|execute)' }
         $global:AfterPartyDetectionRule.status | Should -Be 'enabled'
@@ -143,8 +146,11 @@ Describe 'Failed sign-in custom detection payload' {
         $output = & $payloadPath -GraphAccessToken 'graph-token' -TenantDomain 'school.onmicrosoft.com'
 
         Should -Invoke Invoke-RestMethod -Times 1 -ParameterFilter {
-            $Uri -eq 'https://graph.microsoft.com/beta/security/rules/detectionRules/after-party-lisa-aadsts50126-three-in-one-hour' -and
-            $Method -eq 'PATCH' -and $Body -match '"status"\s*:\s*"disabled"'
+            if ($Uri -ne 'https://graph.microsoft.com/beta/security/rules/detectionRules/after-party-lisa-aadsts50126-three-in-one-hour' -or $Method -ne 'PATCH') { return $false }
+            $patch = $Body | ConvertFrom-Json
+            @($patch.psobject.Properties).Count -eq 1 -and
+            $patch.status -eq 'disabled' -and
+            $Body -notmatch 'responseActions|automatedActions|queryCondition|detectionAction'
         }
         $global:AfterPartyDetectionRule.status | Should -Be 'disabled'
         ($output -join "`n") | Should -Match 'disabled\. The rule remains alert-only with no automated remediation'
