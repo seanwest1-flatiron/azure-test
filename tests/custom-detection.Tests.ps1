@@ -123,11 +123,21 @@ Describe 'Failed sign-in custom detection payload' {
         ($output -join "`n") | Should -Match 'alert-only with no automated remediation'
     }
 
-    It 'disables an existing enabled rule without changing it into a remediation rule' {
+    It 'treats Graph-expanded empty action collections as alert-only when disabling an enabled rule' {
         $global:AfterPartyDetectionRule = [pscustomobject]@{
             id = 'after-party-lisa-aadsts50126-three-in-one-hour'
             status = 'enabled'
-            detectionAction = [pscustomobject]@{ automatedActions = [pscustomobject]@{} }
+            detectionAction = [pscustomobject]@{
+                automatedActions = [pscustomobject]@{
+                    isolateDevices = @()
+                    stopAndQuarantineFiles = @()
+                    disableUsers = @()
+                    forceUserPasswordResets = @()
+                    markUsersAsCompromised = @()
+                    runAntivirusScans = @()
+                }
+                responseActions = @()
+            }
         }
 
         $output = & $payloadPath -GraphAccessToken 'graph-token' -TenantDomain 'school.onmicrosoft.com'
@@ -138,6 +148,24 @@ Describe 'Failed sign-in custom detection payload' {
         }
         $global:AfterPartyDetectionRule.status | Should -Be 'disabled'
         ($output -join "`n") | Should -Match 'disabled\. The rule remains alert-only with no automated remediation'
+    }
+
+    It 'rejects an enabled rule whose expanded action collection contains a real nested action' {
+        $global:AfterPartyDetectionRule = [pscustomobject]@{
+            id = 'after-party-lisa-aadsts50126-three-in-one-hour'
+            status = 'enabled'
+            detectionAction = [pscustomobject]@{
+                automatedActions = [pscustomobject]@{
+                    isolateDevices = @()
+                    disableUsers = @([pscustomobject]@{ accountSidColumn = 'AccountSid' })
+                    forceUserPasswordResets = @()
+                }
+                responseActions = @()
+            }
+        }
+
+        { & $payloadPath -GraphAccessToken 'graph-token' -TenantDomain 'school.onmicrosoft.com' } |
+            Should -Throw "*Custom detection '$($global:AfterPartyDetectionDefinition.id)' unexpectedly contains a remediation action.*"
     }
 
     It 'leaves an auto-disabled rule unchanged and reports Defender last-run details' {

@@ -178,9 +178,29 @@ $path = "/security/rules/detectionRules/$([Uri]::EscapeDataString([string]$defin
 function Get-RuleActionCount {
     param($DetectionRule, [string]$PropertyName)
     $actions = $DetectionRule.detectionAction.$PropertyName
-    if ($null -eq $actions) { return 0 }
-    if ($actions -is [System.Collections.IEnumerable] -and $actions -isnot [string]) { return @($actions).Count }
-    return @($actions.psobject.Properties).Count
+    return Get-PopulatedActionValueCount -Value $actions
+}
+
+function Get-PopulatedActionValueCount {
+    param($Value)
+
+    if ($null -eq $Value) { return 0 }
+    if ($Value -is [string]) {
+        if ([string]::IsNullOrWhiteSpace($Value)) { return 0 }
+        return 1
+    }
+    if ($Value -is [System.ValueType]) { return 1 }
+
+    if ($Value -is [System.Collections.IDictionary]) {
+        return @($Value.Values | ForEach-Object { Get-PopulatedActionValueCount -Value $_ } | Measure-Object -Sum).Sum
+    }
+    if ($Value -is [System.Collections.IEnumerable]) {
+        return @($Value | ForEach-Object { Get-PopulatedActionValueCount -Value $_ } | Measure-Object -Sum).Sum
+    }
+
+    $properties = @($Value.psobject.Properties | Where-Object { $_.MemberType -in @('NoteProperty', 'Property') })
+    if ($properties.Count -eq 0) { return 0 }
+    return @($properties | ForEach-Object { Get-PopulatedActionValueCount -Value $_.Value } | Measure-Object -Sum).Sum
 }
 
 function Test-RuleNeedsRepair {
