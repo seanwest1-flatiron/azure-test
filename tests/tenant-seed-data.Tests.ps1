@@ -27,6 +27,15 @@ Describe 'Version-controlled tenant baseline data' {
         $seed.passwordRuleSettings.values.LockoutDurationInSeconds | Should -Be '60'
     }
 
+    It 'defines a disabled alert-only Lisa invalid-password custom detection' {
+        $detection = $seed.customDetections.lisaFailedSignIns
+        $detection.id | Should -Be 'after-party-lisa-aadsts50126-three-in-one-hour'
+        $detection.threshold | Should -Be 3
+        $detection.windowMinutes | Should -Be 60
+        $detection.frequency | Should -Be 'PT1H'
+        $detection.severity | Should -Be 'medium'
+    }
+
     It 'defines the expected department memberships' {
         $expected = @{
             'Executive' = @('cory@corywest.onmicrosoft.com', 'kobe@corywest.onmicrosoft.com')

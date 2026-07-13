@@ -8,6 +8,7 @@ Describe 'Tenant seed license SKU matching' {
 
     BeforeEach {
         $global:AfterPartyGraphFailure = $false
+        $global:AfterPartyDetectionRule = $null
         $global:AfterPartyTestSeed = [pscustomobject]@{
             licenses = [pscustomobject]@{
                 businessPremium = [pscustomobject]@{ displayName = 'Microsoft 365 Business Premium'; skuPartNumberCandidates = @('SPB', 'O365_BUSINESS_PREMIUM') }
@@ -17,6 +18,8 @@ Describe 'Tenant seed license SKU matching' {
             }
             licensingGroup = [pscustomobject]@{ displayName = 'All Employees'; legacyDisplayNames = @(); mailNickname = 'all-employees' }
             passwordRuleSettings = [pscustomobject]@{ templateId = '5cf42378-d67d-4f36-ba46-e8b86229381d'; values = [pscustomobject]@{ LockoutThreshold = '50'; LockoutDurationInSeconds = '60' } }
+            failedSignInLab = $null
+            customDetections = $null
             departments = @()
             users = @()
         }
@@ -57,6 +60,22 @@ Describe 'Tenant seed license SKU matching' {
             if ($Uri -like 'https://graph.microsoft.com/v1.0/users/socky*' -and $Method -eq 'GET') { return [pscustomobject]@{ id = 'socky-id'; userPrincipalName = 'socky@corywest.onmicrosoft.com' } }
             if ($Uri -eq 'https://graph.microsoft.com/v1.0/users/socky-id' -and $Method -eq 'PATCH') { return [pscustomobject]@{} }
             if ($Uri -eq 'https://graph.microsoft.com/v1.0/groups/group-id/members/$ref' -and $Method -eq 'POST') { return [pscustomobject]@{} }
+            if ($Uri -eq 'https://graph.microsoft.com/beta/security/rules/detectionRules/after-party-lisa-aadsts50126-three-in-one-hour') {
+                if ($Method -eq 'GET' -and $null -ne $global:AfterPartyDetectionRule) { return $global:AfterPartyDetectionRule }
+                if ($Method -eq 'GET') {
+                    $exception = [System.Exception]::new('404 Not Found')
+                    $exception.Data['StatusCode'] = 404
+                    throw $exception
+                }
+                if ($Method -eq 'PATCH') {
+                    $global:AfterPartyDetectionRule = $Body | ConvertFrom-Json
+                    return [pscustomobject]@{}
+                }
+            }
+            if ($Uri -eq 'https://graph.microsoft.com/beta/security/rules/detectionRules' -and $Method -eq 'POST') {
+                $global:AfterPartyDetectionRule = $Body | ConvertFrom-Json
+                return $global:AfterPartyDetectionRule
+            }
             throw "Unexpected REST request: $Method $Uri"
         }
         Mock Start-Sleep { }
@@ -107,5 +126,36 @@ Describe 'Tenant seed license SKU matching' {
             $Body -match '"displayName"\s*:\s*"Socky"' -and
             $Body -notmatch '"surname"'
         }
+    }
+
+    It 'creates the Lisa invalid-password detection disabled with no automated response actions' {
+        $global:AfterPartyTestSeed.customDetections = [pscustomobject]@{
+            lisaFailedSignIns = [pscustomobject]@{
+                id = 'after-party-lisa-aadsts50126-three-in-one-hour'
+                displayName = 'Lisa Simpson repeated invalid-password sign-ins'
+                description = 'Alerts on three AADSTS50126 invalid-password sign-ins for Lisa Simpson through the dedicated After Party sign-in application within one hour.'
+                threshold = 3
+                windowMinutes = 60
+                frequency = 'PT1H'
+                severity = 'medium'
+                category = 'CredentialAccess'
+            }
+        }
+        $global:AfterPartyTestSeed.failedSignInLab = [pscustomobject]@{ clientId = 'dedicated-app-id'; userPrincipalName = 'lisa.simpson@corywest.onmicrosoft.com' }
+
+        $output = & $seedScriptPath -GraphAccessToken $graphAccessToken
+
+        Should -Invoke Invoke-RestMethod -Times 1 -ParameterFilter {
+            $Uri -eq 'https://graph.microsoft.com/beta/security/rules/detectionRules' -and
+            $Method -eq 'POST' -and
+            $Body -match '"status"\s*:\s*"disabled"' -and
+            $Body -match 'EntraIdSignInEvents' -and
+            $Body -match 'ErrorCode == 50126' -and
+            $Body -match 'FailureCount >= 3' -and
+            $Body -match 'lisa\.simpson@corywest\.onmicrosoft\.com' -and
+            $Body -match 'dedicated-app-id' -and
+            $Body -notmatch 'responseActions'
+        }
+        ($output -join "`n") | Should -Match 'Custom detection: after-party-lisa-aadsts50126-three-in-one-hour is disabled \(alert-only\)\.'
     }
 }

@@ -18,6 +18,10 @@ test("environment updates publish the cache-busted bootstrap runbook", () => {
   assert.match(template, /"publishContentLink": \{[\s\S]*?"uri": "\[parameters\('bootstrapUri'\)\]"/);
 });
 
+test("environment updates grant the custom detection permission to the runner", () => {
+  assert.match(app, /"CustomDetection\.ReadWrite\.All"/);
+});
+
 test("hides the application until the versioned stylesheet loads and reveals loader failures", () => {
   assert.ok(index.indexOf('id="critical-loading-style"') < index.indexOf("</head>"));
   assert.match(index, /body > main \{ visibility: hidden; \}/);

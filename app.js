@@ -7,7 +7,7 @@
   const ARM = "https://management.azure.com";
   const GRAPH = "https://graph.microsoft.com/v1.0";
   const GRAPH_APP_ID = "00000003-0000-0000-c000-000000000000";
-  const APPLICATION_ROLES = Object.freeze(["Mail.Send", "Files.ReadWrite.All", "User.ReadWrite.All", "Group.ReadWrite.All", "GroupMember.ReadWrite.All", "LicenseAssignment.Read.All", "LicenseAssignment.ReadWrite.All", "GroupSettings.ReadWrite.All", "AuditLog.Read.All"]);
+  const APPLICATION_ROLES = Object.freeze(["Mail.Send", "Files.ReadWrite.All", "User.ReadWrite.All", "Group.ReadWrite.All", "GroupMember.ReadWrite.All", "LicenseAssignment.Read.All", "LicenseAssignment.ReadWrite.All", "GroupSettings.ReadWrite.All", "AuditLog.Read.All", "CustomDetection.ReadWrite.All"]);
   const ARM_SCOPE = "https://management.azure.com/user_impersonation";
   const GRAPH_SCOPES = ["Application.Read.All", "AppRoleAssignment.ReadWrite.All"];
   const RUNNER_STORAGE_KEY = "afterParty.runner.v2";

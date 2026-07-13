@@ -13,7 +13,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$installedRunnerVersion = '2026.07.13.1'
+$installedRunnerVersion = '2026.07.13.2'
 $repositoryBase = 'https://raw.githubusercontent.com/seanwest1-flatiron/azure-test/main'
 $manifest = Invoke-RestMethod -Method GET -Uri "$repositoryBase/version.json?nonce=$([Guid]::NewGuid().ToString('N'))"
 if ([string]::IsNullOrWhiteSpace([string]$manifest.payloadVersion)) {

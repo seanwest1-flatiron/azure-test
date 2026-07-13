@@ -45,8 +45,8 @@ function Get-GraphStatusCode {
 }
 
 function Invoke-Graph {
-    param([string] $Method, [string] $Path, $Body)
-    $uri = "https://graph.microsoft.com/v1.0$Path"
+    param([string] $Method, [string] $Path, $Body, [string] $ApiVersion = 'v1.0')
+    $uri = "https://graph.microsoft.com/$ApiVersion$Path"
     $parameters = @{ Method = $Method; Uri = $uri; Headers = $headers }
     if ($PSBoundParameters.ContainsKey('Body')) {
         $parameters.ContentType = 'application/json'
@@ -268,6 +268,45 @@ function Set-PasswordRuleSettings {
     return [pscustomobject]@{ LockoutThreshold = $verifiedValues.LockoutThreshold; LockoutDurationInSeconds = $verifiedValues.LockoutDurationInSeconds }
 }
 
+function Set-LisaFailedSignInDetection {
+    param($Definition, $Lab)
+    if ([string]::IsNullOrWhiteSpace([string]$Definition.id) -or [string]::IsNullOrWhiteSpace([string]$Lab.userPrincipalName) -or [string]::IsNullOrWhiteSpace([string]$Lab.clientId)) {
+        throw 'The tenant baseline does not contain valid Lisa failed-sign-in detection configuration.'
+    }
+    $query = @"
+EntraIdSignInEvents
+| where Timestamp > ago($([int]$Definition.windowMinutes)m)
+| where AccountUpn =~ '$($Lab.userPrincipalName -replace "'", "''")'
+| where ApplicationId == '$($Lab.clientId -replace "'", "''")'
+| where ErrorCode == 50126
+| summarize arg_max(Timestamp, ReportId), FailureCount = count(), CorrelationIds = make_set(CorrelationId, $([int]$Definition.threshold)) by AccountUpn, ApplicationId
+| where FailureCount >= $([int]$Definition.threshold)
+| project Timestamp, ReportId, AccountUpn, ApplicationId, FailureCount, CorrelationIds
+"@.Trim()
+    $rule = @{
+        '@odata.type' = '#microsoft.graph.security.detectionRule'
+        id = [string]$Definition.id
+        displayName = [string]$Definition.displayName
+        description = [string]$Definition.description
+        status = 'disabled'
+        queryCondition = @{ queryText = $query }
+        schedule = @{ frequency = [string]$Definition.frequency }
+        detectionAction = @{ alertTemplate = @{ title = [string]$Definition.displayName; description = [string]$Definition.description; severity = [string]$Definition.severity; category = [string]$Definition.category; recommendedActions = 'Review the related sign-in activity.' } }
+    }
+    $path = "/security/rules/detectionRules/$([Uri]::EscapeDataString([string]$Definition.id))"
+    try {
+        Invoke-Graph -Method GET -Path $path -ApiVersion beta | Out-Null
+        Invoke-Graph -Method PATCH -Path $path -Body $rule -ApiVersion beta | Out-Null
+    } catch {
+        if ((Get-GraphStatusCode -ErrorRecord $_) -ne 404) { throw }
+        Invoke-Graph -Method POST -Path '/security/rules/detectionRules' -Body $rule -ApiVersion beta | Out-Null
+    }
+    $verified = Invoke-Graph -Method GET -Path $path -ApiVersion beta
+    if ($verified.status -ne 'disabled') { throw "Custom detection '$($Definition.id)' was not left disabled." }
+    if ($verified.queryCondition.queryText -ne $query) { throw "Custom detection '$($Definition.id)' query verification failed." }
+    return [pscustomobject]@{ Id = $Definition.id; Status = $verified.status }
+}
+
 $licenses = @((Resolve-License -License $seed.licenses.businessPremium))
 $applyPasswordRuleSettings = $false
 if ($applyPasswordRuleSettings) { $passwordRules = Set-PasswordRuleSettings -Definition $seed.passwordRuleSettings }
@@ -320,4 +359,10 @@ foreach ($department in $seed.departments) {
     $departmentMembershipsVerified += $membership.Verified
 }
 
-Write-Output "Tenant preparation complete. Users: $($seed.users.Count) configured ($created created, $reused repaired). Licensing: $($seed.licensingGroup.displayName) with $($licensingMembership.Verified)/$($seed.users.Count) baseline members and $($licenses.Count) license SKU(s). Departments: $($seed.departments.Count) Microsoft 365 groups ($departmentGroupsCreated created, $departmentGroupsRepaired repaired) with $departmentMembershipsVerified configured memberships ($departmentMembershipsAdded added)."
+$customDetection = $null
+if ($seed.customDetections.lisaFailedSignIns) {
+    $customDetection = Set-LisaFailedSignInDetection -Definition $seed.customDetections.lisaFailedSignIns -Lab $seed.failedSignInLab
+}
+
+$detectionSummary = if ($customDetection) { " Custom detection: $($customDetection.Id) is $($customDetection.Status) (alert-only)." } else { '' }
+Write-Output "Tenant preparation complete. Users: $($seed.users.Count) configured ($created created, $reused repaired). Licensing: $($seed.licensingGroup.displayName) with $($licensingMembership.Verified)/$($seed.users.Count) baseline members and $($licenses.Count) license SKU(s). Departments: $($seed.departments.Count) Microsoft 365 groups ($departmentGroupsCreated created, $departmentGroupsRepaired repaired) with $departmentMembershipsVerified configured memberships ($departmentMembershipsAdded added).$detectionSummary"

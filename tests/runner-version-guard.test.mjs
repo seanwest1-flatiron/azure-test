@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { RUNNER_AFFECTING_FILES, validateRunnerVersionChange } from "../scripts/check-runner-version.mjs";
+import { RUNNER_AFFECTING_FILES, runnerAffectingFiles, validateRunnerVersionChange } from "../scripts/check-runner-version.mjs";
 
 const manifest = runnerVersion => ({ runnerVersion });
 
@@ -20,6 +20,16 @@ test("accepts runner changes accompanied by a runner version bump", () => {
     previousManifest: manifest("runner-1"),
     currentManifest: manifest("runner-2")
   }));
+});
+
+test("requires a runner version bump for runner configuration changes in the frontend", () => {
+  assert.throws(() => validateRunnerVersionChange({
+    changedFiles: ["app.js"],
+    changedAppLines: ["const APPLICATION_ROLES = Object.freeze([\"CustomDetection.ReadWrite.All\"]);"],
+    previousManifest: manifest("runner-1"),
+    currentManifest: manifest("runner-1")
+  }), /app\.js/);
+  assert.deepEqual(runnerAffectingFiles({ changedFiles: ["app.js"], changedAppLines: ["setStatus(\"Ready\");"] }), []);
 });
 
 test("does not require runner changes for payload, baseline, or frontend-only edits", () => {

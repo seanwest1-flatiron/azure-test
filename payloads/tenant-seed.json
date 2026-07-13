@@ -58,6 +58,18 @@
     "clientId": "7383ffdd-51f7-4cb2-8f4e-a7793939fdae",
     "userPrincipalName": "lisa.simpson@corywest.onmicrosoft.com"
   },
+  "customDetections": {
+    "lisaFailedSignIns": {
+      "id": "after-party-lisa-aadsts50126-three-in-one-hour",
+      "displayName": "Lisa Simpson repeated invalid-password sign-ins",
+      "description": "Alerts on three AADSTS50126 invalid-password sign-ins for Lisa Simpson through the dedicated After Party sign-in application within one hour.",
+      "threshold": 3,
+      "windowMinutes": 60,
+      "frequency": "PT1H",
+      "severity": "medium",
+      "category": "CredentialAccess"
+    }
+  },
   "passwordRuleSettings": {
     "templateId": "5cf42378-d67d-4f36-ba46-e8b86229381d",
     "values": {
