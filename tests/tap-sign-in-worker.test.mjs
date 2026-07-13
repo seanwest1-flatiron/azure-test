@@ -3,7 +3,7 @@ import test from "node:test";
 
 process.env.AFTER_PARTY_WORKER_TEST = "1";
 process.env.TEMPORARY_ACCESS_PASS = "secret-tap-value";
-const { base64Url, createPkce, decodeJwtClaim, isRegistrationInterruption, safeText, tenantUserPrincipalName } = await import("../payloads/tap-sign-in-worker.mjs");
+const { base64Url, createPkce, credentialEntryStage, decodeJwtClaim, isRegistrationInterruption, safeText, tenantUserPrincipalName } = await import("../payloads/tap-sign-in-worker.mjs");
 
 test("builds Lisa's UPN from the connected tenant domain", () => {
   assert.equal(tenantUserPrincipalName("lisa.simpson", "student.onmicrosoft.com"), "lisa.simpson@student.onmicrosoft.com");
@@ -23,6 +23,12 @@ test("detects security-information and MFA registration interruption", () => {
   assert.equal(isRegistrationInterruption("https://mysignins.microsoft.com/security-info", ""), true);
   assert.equal(isRegistrationInterruption("https://login.microsoftonline.com/", "More information required"), true);
   assert.equal(isRegistrationInterruption("http://localhost/?code=redacted", "You signed in"), false);
+});
+
+test("accepts Microsoft's direct TAP screen when login_hint hides the username field", () => {
+  assert.equal(credentialEntryStage({ usernameVisible: false, tapVisible: true }), "tap");
+  assert.equal(credentialEntryStage({ usernameVisible: true, tapVisible: false }), "username");
+  assert.equal(credentialEntryStage({ usernameVisible: false, tapVisible: false }), "pending");
 });
 
 test("redacts TAP and OAuth artifacts and validates the delegated tenant claim", () => {

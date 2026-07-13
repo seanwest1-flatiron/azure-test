@@ -44,6 +44,12 @@ export function decodeJwtClaim(token, claim) {
   return payload[claim];
 }
 
+export function credentialEntryStage({ usernameVisible, tapVisible }) {
+  if (tapVisible) return "tap";
+  if (usernameVisible) return "username";
+  return "pending";
+}
+
 function report(result, details = {}) {
   console.log(`${RESULT_PREFIX}${JSON.stringify({ result, ...details, timestampUtc: new Date().toISOString() })}`);
 }
@@ -73,12 +79,21 @@ async function waitForOutcome(page, expectedState, timeoutMs) {
 }
 
 async function submitTap(page, upn) {
-  const username = page.locator('input[name="loginfmt"]');
-  await username.waitFor({ state: "visible", timeout: 30000 });
-  await username.fill(upn);
-  await page.locator("#idSIButton9").click();
+  const username = page.locator('input[name="loginfmt"]:visible');
+  const tapInput = page.locator('input[name="passwd"]:visible, input[name="otc"]:visible, #idTxtBx_SAOTCC_OTC:visible').first();
+  await Promise.any([
+    username.waitFor({ state: "visible", timeout: 30000 }),
+    tapInput.waitFor({ state: "visible", timeout: 30000 })
+  ]);
+  const stage = credentialEntryStage({
+    usernameVisible: await username.isVisible().catch(() => false),
+    tapVisible: await tapInput.isVisible().catch(() => false)
+  });
+  if (stage === "username") {
+    await username.fill(upn);
+    await page.locator("#idSIButton9").click();
+  }
 
-  const tapInput = page.locator('input[name="passwd"]');
   await tapInput.waitFor({ state: "visible", timeout: 30000 });
   await tapInput.fill(temporaryAccessPass);
   await page.locator("#idSIButton9").click();
