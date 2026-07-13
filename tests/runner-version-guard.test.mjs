@@ -36,6 +36,7 @@ test("treats managed-identity permission reconciliation as runner-affecting", ()
   for (const changedLine of [
     'const CORE_APPLICATION_ROLES = Object.freeze(["Application.ReadWrite.All"]);',
     'resetLisaPassword: Object.freeze(["User-PasswordProfile.ReadWrite.All"]),',
+    'tapSignIn: Object.freeze(["UserAuthMethod-TAP.ReadWrite.All"]),',
     "async function reconcileRunnerPermissions(lab, runner) {"
   ]) {
     assert.throws(() => validateRunnerVersionChange({

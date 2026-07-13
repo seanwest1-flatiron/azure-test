@@ -13,7 +13,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$installedRunnerVersion = '2026.07.13.5'
+$installedRunnerVersion = '2026.07.13.6'
 $repositoryBase = 'https://raw.githubusercontent.com/seanwest1-flatiron/azure-test/main'
 $manifest = Invoke-RestMethod -Method GET -Uri "$repositoryBase/version.json?nonce=$([Guid]::NewGuid().ToString('N'))"
 if ([string]::IsNullOrWhiteSpace([string]$manifest.payloadVersion)) {
@@ -58,6 +58,7 @@ switch ($LabPath) {
     }
     'payloads/failed-sign-in.ps1' { $requiredGraphRoles += 'Application.ReadWrite.All' }
     'payloads/browser-failed-sign-in.ps1' { $requiredGraphRoles += 'Application.ReadWrite.All' }
+    'payloads/tap-sign-in.ps1' { $requiredGraphRoles += @('Application.ReadWrite.All', 'UserAuthMethod-TAP.ReadWrite.All') }
     'payloads/create-failed-sign-in-detection.ps1' { $requiredGraphRoles += @('Application.ReadWrite.All', 'CustomDetection.ReadWrite.All') }
     'payloads/reset-lisa-password.ps1' { $requiredGraphRoles += 'User-PasswordProfile.ReadWrite.All' }
     'payloads/share-onedrive-file.ps1' { $requiredGraphRoles += 'Files.ReadWrite.All' }
@@ -109,9 +110,9 @@ Write-Output "Resolved tenant domain: $tenantDomain"
 
 $payload = [ScriptBlock]::Create($labSource)
 $payloadParameters = @{ GraphAccessToken = $graphAccessToken; TenantDomain = $tenantDomain }
-if ($LabPath -eq 'payloads/browser-failed-sign-in.ps1') {
+if ($LabPath -in @('payloads/browser-failed-sign-in.ps1', 'payloads/tap-sign-in.ps1')) {
     if ([string]::IsNullOrWhiteSpace($SubscriptionId) -or [string]::IsNullOrWhiteSpace($ResourceGroup)) {
-        throw 'The browser failed sign-in payload requires the selected Azure subscription and resource group.'
+        throw 'The browser payload requires the selected Azure subscription and resource group.'
     }
     $payloadParameters.SubscriptionId = $SubscriptionId
     $payloadParameters.ResourceGroup = $ResourceGroup

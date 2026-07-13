@@ -14,7 +14,8 @@
   const CORE_APPLICATION_ROLES = Object.freeze(["Mail.Send", "Files.ReadWrite.All", "User.ReadWrite.All", "Group.ReadWrite.All", "GroupMember.ReadWrite.All", "LicenseAssignment.Read.All", "LicenseAssignment.ReadWrite.All", "GroupSettings.ReadWrite.All", "AuditLog.Read.All", "Domain.Read.All", "Application.ReadWrite.All"]);
   const LAB_APPLICATION_ROLES = Object.freeze({
     failedSignInDetection: Object.freeze(["CustomDetection.ReadWrite.All"]),
-    resetLisaPassword: Object.freeze(["User-PasswordProfile.ReadWrite.All"])
+    resetLisaPassword: Object.freeze(["User-PasswordProfile.ReadWrite.All"]),
+    tapSignIn: Object.freeze(["UserAuthMethod-TAP.ReadWrite.All"])
   });
   const ARM_SCOPE = "https://management.azure.com/user_impersonation";
   const GRAPH_SCOPES = ["Application.Read.All", "AppRoleAssignment.ReadWrite.All"];
@@ -26,7 +27,7 @@
     "configuration-warning", "status", "sign-in", "sign-out", "account-menu", "account-button", "account-name", "account-username", "account-tenant", "account-environment",
     "update-dialog", "update-refresh", "update-cancel", "environment-chooser", "environment-chooser-title", "environment-chooser-message", "environment-cancel", "environment-continue", "subscription-field", "resource-group-field",
     "subscription", "resource-group", "run", "run-file-share", "run-email-triage",
-    "run-customer-payment-export", "run-external-email", "run-failed-sign-in", "run-failed-sign-in-three", "run-failed-sign-in-detection", "run-browser-failed-sign-in", "run-browser-failed-sign-in-three", "run-reset-lisa-password", "email-job-status", "file-share-job-status", "message-batch-job-status", "payment-export-job-status", "external-email-job-status", "failed-sign-in-job-status", "failed-sign-in-three-job-status", "failed-sign-in-detection-job-status", "browser-failed-sign-in-job-status", "browser-failed-sign-in-three-job-status", "reset-lisa-password-job-status", "diagnostics"
+    "run-customer-payment-export", "run-external-email", "run-failed-sign-in", "run-failed-sign-in-three", "run-failed-sign-in-detection", "run-browser-failed-sign-in", "run-browser-failed-sign-in-three", "run-reset-lisa-password", "run-tap-sign-in", "email-job-status", "file-share-job-status", "message-batch-job-status", "payment-export-job-status", "external-email-job-status", "failed-sign-in-job-status", "failed-sign-in-three-job-status", "failed-sign-in-detection-job-status", "browser-failed-sign-in-job-status", "browser-failed-sign-in-three-job-status", "reset-lisa-password-job-status", "tap-sign-in-job-status", "diagnostics"
   ].map(id => [id, document.getElementById(id)]));
   let msalClient;
   let account;
@@ -50,7 +51,8 @@
     failedSignInDetection: { operation: "failedSignInDetection", payloadPath: "payloads/create-failed-sign-in-detection.ps1", label: "Toggle failed sign-in detection", statusId: "failed-sign-in-detection-job-status" },
     browserFailedSignIn: { operation: "browserFailedSignIn", payloadPath: "payloads/browser-failed-sign-in.ps1", label: "Browser failed sign-in", statusId: "browser-failed-sign-in-job-status" },
     browserFailedSignInThree: { operation: "browserFailedSignInThree", payloadPath: "payloads/browser-failed-sign-in.ps1", label: "Three browser failed sign-ins", statusId: "browser-failed-sign-in-three-job-status", parameters: { AttemptCount: "3" } },
-    resetLisaPassword: { operation: "resetLisaPassword", payloadPath: "payloads/reset-lisa-password.ps1", label: "Reset Lisa Simpson password", statusId: "reset-lisa-password-job-status" }
+    resetLisaPassword: { operation: "resetLisaPassword", payloadPath: "payloads/reset-lisa-password.ps1", label: "Reset Lisa Simpson password", statusId: "reset-lisa-password-job-status" },
+    tapSignIn: { operation: "tapSignIn", payloadPath: "payloads/tap-sign-in.ps1", label: "Lisa Simpson TAP sign-in", statusId: "tap-sign-in-job-status" }
   });
 
   function setStatus(message, kind = "") {
@@ -225,7 +227,8 @@
       failedSignInDetection: el["run-failed-sign-in-detection"],
       browserFailedSignIn: el["run-browser-failed-sign-in"],
       browserFailedSignInThree: el["run-browser-failed-sign-in-three"],
-      resetLisaPassword: el["run-reset-lisa-password"]
+      resetLisaPassword: el["run-reset-lisa-password"],
+      tapSignIn: el["run-tap-sign-in"]
     }).forEach(([operation, button]) => {
       if (button) button.disabled = busy || activeOperations.size > 0;
     });
@@ -558,7 +561,7 @@
     try {
       await token([ARM_SCOPE], operation);
       const jobId = crypto.randomUUID();
-      const jobParameters = ["browserFailedSignIn", "browserFailedSignInThree"].includes(operation)
+      const jobParameters = ["browserFailedSignIn", "browserFailedSignInThree", "tapSignIn"].includes(operation)
         ? { ...parameters, SubscriptionId: runner.subscriptionId, ResourceGroup: runner.resourceGroup }
         : parameters;
       setJobStatus(statusElement, `${label}: queued… Job ID: ${jobId}`, "queued");
@@ -798,5 +801,6 @@
   bind("run-browser-failed-sign-in", "click", () => handleAction(() => beginLab("browserFailedSignIn")));
   bind("run-browser-failed-sign-in-three", "click", () => handleAction(() => beginLab("browserFailedSignInThree")));
   bind("run-reset-lisa-password", "click", () => handleAction(() => beginLab("resetLisaPassword")));
+  bind("run-tap-sign-in", "click", () => handleAction(() => beginLab("tapSignIn")));
   initialize().catch(error => setStatus(explainError(error), "error"));
 })();

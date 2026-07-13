@@ -51,13 +51,16 @@ test("keeps delegated admin scopes separate from managed-identity application ro
   assert.match(app, /const GRAPH_SCOPES = \["Application\.Read\.All", "AppRoleAssignment\.ReadWrite\.All"\]/);
   assert.match(app, /"CustomDetection\.ReadWrite\.All"/);
   assert.match(app, /"User-PasswordProfile\.ReadWrite\.All"/);
+  assert.match(app, /"UserAuthMethod-TAP\.ReadWrite\.All"/);
   assert.match(app, /"Domain\.Read\.All"/);
   assert.match(app, /"Application\.ReadWrite\.All"/);
   assert.doesNotMatch(app, /const GRAPH_SCOPES = \[[^\]]*Application\.ReadWrite\.All/);
   assert.match(app, /failedSignInDetection: Object\.freeze\(\["CustomDetection\.ReadWrite\.All"\]\)/);
   assert.match(app, /resetLisaPassword: Object\.freeze\(\["User-PasswordProfile\.ReadWrite\.All"\]\)/);
+  assert.match(app, /tapSignIn: Object\.freeze\(\["UserAuthMethod-TAP\.ReadWrite\.All"\]\)/);
   assert.doesNotMatch(app, /CORE_APPLICATION_ROLES = Object\.freeze\(\[[^\]]*CustomDetection\.ReadWrite\.All/);
   assert.doesNotMatch(app, /CORE_APPLICATION_ROLES = Object\.freeze\(\[[^\]]*User-PasswordProfile\.ReadWrite\.All/);
+  assert.doesNotMatch(app, /CORE_APPLICATION_ROLES = Object\.freeze\(\[[^\]]*UserAuthMethod-TAP\.ReadWrite\.All/);
 });
 
 test("reconciles required managed-identity roles for an existing environment", () => {
@@ -207,5 +210,13 @@ test("wires the Lisa password reset without adding login or SharePoint activity"
   assert.match(index, /id="run-reset-lisa-password"[^>]*>Reset Lisa’s password<\/button>/);
   assert.match(app, /resetLisaPassword: \{[^}]*operation: "resetLisaPassword"[^}]*payloadPath: "payloads\/reset-lisa-password\.ps1"[^}]*label: "Reset Lisa Simpson password"/);
   assert.match(app, /bind\("run-reset-lisa-password", "click", \(\) => handleAction\(\(\) => beginLab\("resetLisaPassword"\)\)\)/);
-  assert.doesNotMatch(index, /sign in as Lisa|Lisa.*SharePoint/i);
+  assert.doesNotMatch(app.match(/resetLisaPassword: \{[^}]+\}/)?.[0] || "", /tap-sign-in|share-onedrive/i);
+});
+
+test("adds a numbered TAP sign-in lab with bounded browser context", () => {
+  assert.match(index, /<span class="step">12<\/span><h2>Sign in as Lisa Simpson with a Temporary Access Pass<\/h2>/);
+  assert.match(index, /id="run-tap-sign-in"[^>]*>Confirm Lisa’s TAP sign-in<\/button>/);
+  assert.match(app, /tapSignIn: \{[^}]*operation: "tapSignIn"[^}]*payloadPath: "payloads\/tap-sign-in\.ps1"[^}]*label: "Lisa Simpson TAP sign-in"/);
+  assert.match(app, /\["browserFailedSignIn", "browserFailedSignInThree", "tapSignIn"\]\.includes\(operation\)/);
+  assert.match(app, /bind\("run-tap-sign-in", "click", \(\) => handleAction\(\(\) => beginLab\("tapSignIn"\)\)\)/);
 });

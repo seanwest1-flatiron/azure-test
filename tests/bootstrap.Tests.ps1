@@ -18,7 +18,7 @@ Describe 'After Party bootstrap payload URL' {
         $global:AfterPartyTokenRequests = 0
         $global:AfterPartyTokens = @((New-AfterPartyTestToken -Roles @(
             'Application.ReadWrite.All', 'CustomDetection.ReadWrite.All', 'Domain.Read.All', 'Files.ReadWrite.All', 'Group.ReadWrite.All',
-            'GroupMember.ReadWrite.All', 'LicenseAssignment.Read.All', 'LicenseAssignment.ReadWrite.All', 'Mail.Send', 'User-PasswordProfile.ReadWrite.All', 'User.ReadWrite.All'
+            'GroupMember.ReadWrite.All', 'LicenseAssignment.Read.All', 'LicenseAssignment.ReadWrite.All', 'Mail.Send', 'User-PasswordProfile.ReadWrite.All', 'UserAuthMethod-TAP.ReadWrite.All', 'User.ReadWrite.All'
         )))
         Mock Invoke-RestMethod {
             param($Uri)
@@ -70,6 +70,16 @@ Describe 'After Party bootstrap payload URL' {
         ($output -contains 'Worker context: subscription-id/after-test') | Should -Be $true
     }
 
+    It 'forwards the selected Azure context to the TAP browser payload' {
+        Mock Invoke-WebRequest {
+            return [pscustomobject]@{ Content = 'param([string] $GraphAccessToken, [string] $TenantDomain, [string] $SubscriptionId, [string] $ResourceGroup) "TAP worker context: $SubscriptionId/$ResourceGroup"' }
+        }
+
+        $output = & $bootstrapPath -LabPath 'payloads/tap-sign-in.ps1' -SubscriptionId 'subscription-id' -ResourceGroup 'after-test'
+
+        ($output -contains 'TAP worker context: subscription-id/after-test') | Should -Be $true
+    }
+
     It 'forwards an explicit attempt count to the non-interactive failed sign-in payload' {
         Mock Invoke-WebRequest {
             param($Uri)
@@ -115,6 +125,19 @@ Describe 'After Party bootstrap payload URL' {
 
         $global:AfterPartyTokenRequests | Should -Be 2
         ($output -join "`n") | Should -Match 'Waiting for managed identity Graph token propagation\. Missing roles: User-PasswordProfile\.ReadWrite\.All'
+        Should -Invoke Start-Sleep -Times 1 -ParameterFilter { $Seconds -eq 5 }
+    }
+
+    It 'requires the TAP-specific role only for the Lisa TAP sign-in payload' {
+        $global:AfterPartyTokens = @(
+            (New-AfterPartyTestToken -Roles @('Application.ReadWrite.All', 'Domain.Read.All')),
+            (New-AfterPartyTestToken -Roles @('Application.ReadWrite.All', 'Domain.Read.All', 'UserAuthMethod-TAP.ReadWrite.All'))
+        )
+
+        $output = & $bootstrapPath -LabPath 'payloads/tap-sign-in.ps1' -SubscriptionId 'subscription-id' -ResourceGroup 'after-test'
+
+        $global:AfterPartyTokenRequests | Should -Be 2
+        ($output -join "`n") | Should -Match 'Waiting for managed identity Graph token propagation\. Missing roles: UserAuthMethod-TAP\.ReadWrite\.All'
         Should -Invoke Start-Sleep -Times 1 -ParameterFilter { $Seconds -eq 5 }
     }
 }

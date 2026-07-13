@@ -19,6 +19,8 @@ if ($LASTEXITCODE -ne 0) { throw 'ARM retry tests failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'Frontend update gate tests failed.' }
 & node --test (Join-Path $PSScriptRoot 'browser-failed-sign-in-worker.test.mjs')
 if ($LASTEXITCODE -ne 0) { throw 'Browser worker tests failed.' }
+& node --test (Join-Path $PSScriptRoot 'tap-sign-in-worker.test.mjs')
+if ($LASTEXITCODE -ne 0) { throw 'TAP sign-in worker tests failed.' }
 & node --test (Join-Path $PSScriptRoot 'prerequisite-flow.test.mjs')
 if ($LASTEXITCODE -ne 0) { throw 'JavaScript tests failed.' }
 & node --test (Join-Path $PSScriptRoot 'runner-permissions.test.mjs')

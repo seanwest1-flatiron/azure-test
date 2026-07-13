@@ -7,7 +7,7 @@ export const RUNNER_AFFECTING_FILES = Object.freeze([
   "runbooks/bootstrap.ps1"
 ]);
 
-export const RUNNER_APP_MARKERS = /APPLICATION_ROLES|User-PasswordProfile\.ReadWrite\.All|GRAPH_SCOPES|grantApplicationPermissions|grantApplicationRole|reconcileRunnerPermissions|installRunner|bootstrapUri|Microsoft\.Automation|Microsoft\.ContainerInstance/;
+export const RUNNER_APP_MARKERS = /APPLICATION_ROLES|User-PasswordProfile\.ReadWrite\.All|UserAuthMethod-TAP\.ReadWrite\.All|GRAPH_SCOPES|grantApplicationPermissions|grantApplicationRole|reconcileRunnerPermissions|installRunner|bootstrapUri|Microsoft\.Automation|Microsoft\.ContainerInstance/;
 
 export function runnerAffectingFiles({ changedFiles, changedAppLines = [] }) {
   const files = changedFiles.filter(file => RUNNER_AFFECTING_FILES.includes(file));
