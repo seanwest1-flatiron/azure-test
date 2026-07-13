@@ -8,6 +8,18 @@ After Party is a cybersecurity lab platform for investigating real Microsoft 365
 
 Do not connect a production tenant. Use a dedicated tenant where lab-created users, messages, files, alerts, and configuration changes are safe and expected.
 
+## Local frontend development
+
+Run the dependency-free local server from the repository root:
+
+```bash
+node scripts/serve-local.mjs
+```
+
+Open `http://localhost:4173/`. The server disables browser caching, supplies local deployment metadata, and reloads the page when a root-level HTML, CSS, JavaScript, or JSON file changes. Press `Ctrl+C` in the terminal to stop it.
+
+Viewing and editing the unauthenticated frontend requires no Azure configuration. Local Microsoft sign-in additionally requires `http://localhost:4173/` to be registered as a Single-page application redirect URI for the client ID in `config.js`. Starting the server does not authenticate or contact a tenant; selecting sign-in or a lab action can begin the real authorization and lab workflow.
+
 ## Documentation
 
 - [Project overview](docs/project-overview.md) — product model, architecture, and user experience

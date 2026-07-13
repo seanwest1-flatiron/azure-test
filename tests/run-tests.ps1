@@ -27,5 +27,9 @@ if ($LASTEXITCODE -ne 0) { throw 'JavaScript tests failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'Runner permission tests failed.' }
 & node --test (Join-Path $PSScriptRoot 'frontend-ui.test.mjs')
 if ($LASTEXITCODE -ne 0) { throw 'Frontend tests failed.' }
+& node --test (Join-Path $PSScriptRoot 'config.test.mjs')
+if ($LASTEXITCODE -ne 0) { throw 'Frontend configuration tests failed.' }
+& node --test (Join-Path $PSScriptRoot 'local-server.test.mjs')
+if ($LASTEXITCODE -ne 0) { throw 'Local server tests failed.' }
 & node --test (Join-Path $PSScriptRoot 'runner-version-guard.test.mjs')
 if ($LASTEXITCODE -ne 0) { throw 'Runner version guard tests failed.' }
