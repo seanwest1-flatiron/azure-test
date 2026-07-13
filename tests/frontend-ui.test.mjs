@@ -67,6 +67,7 @@ test("puts authentication in a responsive account control", () => {
   assert.match(index, /<details id="account-menu" class="account-menu" hidden>[\s\S]*?id="account-button"[\s\S]*?id="account-environment"[\s\S]*?id="sign-out"/);
   assert.match(app, /el\["account-button"\]\.textContent = displayName/);
   assert.match(app, /el\["account-menu"\]\.hidden = !signedIn/);
+  assert.match(styles, /\[hidden\] \{ display: none !important; \}/);
   assert.match(styles, /\.site-header \{[^}]*flex-direction: column[^}]*align-items: stretch/);
   assert.match(styles, /\.account-control \{ position: relative; align-self: flex-end/);
   assert.match(styles, /\.account-sign-in\.secondary \{[^}]*background: #fff[^}]*color: #111[^}]*white-space: nowrap/);
