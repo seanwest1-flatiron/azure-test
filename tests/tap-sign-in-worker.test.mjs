@@ -3,7 +3,7 @@ import test from "node:test";
 
 process.env.AFTER_PARTY_WORKER_TEST = "1";
 process.env.TEMPORARY_ACCESS_PASS = "secret-tap-value";
-const { TAP_INPUT_SELECTOR, TAP_SUBMIT_FALLBACK_SELECTOR, base64Url, clickTapSignIn, createPkce, credentialEntryStage, decodeJwtClaim, diagnosticUrl, isRegistrationInterruption, safeText, tenantUserPrincipalName } = await import("../payloads/tap-sign-in-worker.mjs");
+const { CONSENT_SUBMIT_FALLBACK_SELECTOR, TAP_INPUT_SELECTOR, TAP_SUBMIT_FALLBACK_SELECTOR, base64Url, clickConsentAccept, clickTapSignIn, createPkce, credentialEntryStage, decodeJwtClaim, diagnosticUrl, isPermissionsRequestedPage, isRegistrationInterruption, safeText, tenantUserPrincipalName } = await import("../payloads/tap-sign-in-worker.mjs");
 
 test("builds Lisa's UPN from the connected tenant domain", () => {
   assert.equal(tenantUserPrincipalName("lisa.simpson", "student.onmicrosoft.com"), "lisa.simpson@student.onmicrosoft.com");
@@ -60,6 +60,39 @@ test("falls back to a visible submit control when the accessible Sign in button 
     }
   };
   await clickTapSignIn(page);
+  assert.deepEqual(clicks, ["fallback"]);
+});
+
+test("recognizes the permissions request and accepts it with the accessible button", async () => {
+  assert.equal(isPermissionsRequestedPage("Permissions requested After Party Failed Sign-In Generator"), true);
+  assert.equal(isPermissionsRequestedPage("Welcome"), false);
+  const clicks = [];
+  const page = {
+    getByRole(role, options) {
+      assert.equal(role, "button");
+      assert.equal(String(options.name), "/^Accept$/i");
+      return { first: () => ({ isVisible: async () => true, click: async () => clicks.push("accessible") }) };
+    },
+    locator() {
+      return { first: () => ({ isVisible: async () => true, click: async () => clicks.push("fallback") }) };
+    }
+  };
+  assert.equal(await clickConsentAccept(page), true);
+  assert.deepEqual(clicks, ["accessible"]);
+});
+
+test("falls back to a visible submit control when the accessible Accept button is unavailable", async () => {
+  const clicks = [];
+  const page = {
+    getByRole() {
+      return { first: () => ({ isVisible: async () => false, click: async () => clicks.push("accessible") }) };
+    },
+    locator(selector) {
+      assert.equal(selector, CONSENT_SUBMIT_FALLBACK_SELECTOR);
+      return { first: () => ({ isVisible: async () => true, click: async () => clicks.push("fallback") }) };
+    }
+  };
+  assert.equal(await clickConsentAccept(page), true);
   assert.deepEqual(clicks, ["fallback"]);
 });
 

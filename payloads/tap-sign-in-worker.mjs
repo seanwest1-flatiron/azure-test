@@ -11,6 +11,7 @@ let pageCaptureEmitted = false;
 
 export const TAP_INPUT_SELECTOR = 'input[name="accesspass"]:visible, input[name="passwd"]:visible, input[name="otc"]:visible, #idTxtBx_SAOTCC_OTC:visible';
 export const TAP_SUBMIT_FALLBACK_SELECTOR = 'button[type="submit"]:visible, input[type="submit"]:visible, #idSIButton9:visible';
+export const CONSENT_SUBMIT_FALLBACK_SELECTOR = 'button[type="submit"]:visible, input[type="submit"]:visible, #idSIButton9:visible';
 
 export function base64Url(value) {
   return Buffer.from(value).toString("base64").replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
@@ -62,6 +63,24 @@ export async function clickTapSignIn(page) {
     return;
   }
   await page.locator(TAP_SUBMIT_FALLBACK_SELECTOR).first().click();
+}
+
+export function isPermissionsRequestedPage(pageText) {
+  return /permissions requested|accept the permissions request/i.test(pageText || "");
+}
+
+export async function clickConsentAccept(page) {
+  const accessibleAccept = page.getByRole("button", { name: /^Accept$/i }).first();
+  if (await accessibleAccept.isVisible().catch(() => false)) {
+    await accessibleAccept.click();
+    return true;
+  }
+  const fallback = page.locator(CONSENT_SUBMIT_FALLBACK_SELECTOR).first();
+  if (await fallback.isVisible().catch(() => false)) {
+    await fallback.click();
+    return true;
+  }
+  return false;
 }
 
 function report(result, details = {}) {
@@ -153,9 +172,8 @@ async function advancePostAuthentication(page) {
       const no = page.locator('#idBtn_Back, button:has-text("No")').first();
       if (await no.isVisible().catch(() => false)) { await no.click(); await new Promise(resolve => setTimeout(resolve, 500)); continue; }
     }
-    if (/permissions requested|accept the permissions request/i.test(text)) {
-      const accept = page.locator('#idSIButton9, button:has-text("Accept")').first();
-      if (await accept.isVisible().catch(() => false)) { await accept.click(); await new Promise(resolve => setTimeout(resolve, 500)); continue; }
+    if (isPermissionsRequestedPage(text)) {
+      if (await clickConsentAccept(page)) { await new Promise(resolve => setTimeout(resolve, 500)); continue; }
     }
     return;
   }
