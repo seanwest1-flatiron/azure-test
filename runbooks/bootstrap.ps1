@@ -13,6 +13,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$installedRunnerVersion = '2026.07.13.1'
 $repositoryBase = 'https://raw.githubusercontent.com/seanwest1-flatiron/azure-test/main'
 $manifest = Invoke-RestMethod -Method GET -Uri "$repositoryBase/version.json?nonce=$([Guid]::NewGuid().ToString('N'))"
 if ([string]::IsNullOrWhiteSpace([string]$manifest.payloadVersion)) {
@@ -25,7 +26,7 @@ if ($labUri.Scheme -ne 'https' -or $labUri.Host -ne 'raw.githubusercontent.com')
     throw 'The payload URI is not an approved HTTPS GitHub raw-content URI.'
 }
 
-Write-Output "Runner version: $($manifest.runnerVersion)"
+Write-Output "Installed runner version: $installedRunnerVersion"
 Write-Output "Downloading current payload: $LabPath"
 Write-Output "Resolved payload URL: $($labUri.AbsoluteUri)"
 $labSource = (Invoke-WebRequest -Uri $labUri.AbsoluteUri -UseBasicParsing).Content

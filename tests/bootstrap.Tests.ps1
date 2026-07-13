@@ -30,6 +30,14 @@ Describe 'After Party bootstrap payload URL' {
         ($output -contains "Resolved payload URL: $expected") | Should -Be $true
     }
 
+    It 'reports the version embedded in the installed bootstrap rather than the live manifest runner version' {
+        $expectedRunnerVersion = (Get-Content (Join-Path (Split-Path -Parent $PSScriptRoot) 'version.json') -Raw | ConvertFrom-Json).runnerVersion
+        $output = & $bootstrapPath -LabPath 'payloads/seed-tenant.ps1'
+
+        ($output -contains "Installed runner version: $expectedRunnerVersion") | Should -Be $true
+        ($output -contains 'Runner version: 2026.07.12.1') | Should -Be $false
+    }
+
     It 'forwards the selected Azure context only to the browser worker payload' {
         Mock Invoke-WebRequest {
             param($Uri)

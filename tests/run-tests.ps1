@@ -17,3 +17,5 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 if ($LASTEXITCODE -ne 0) { throw 'JavaScript tests failed.' }
 & node --test (Join-Path $PSScriptRoot 'frontend-ui.test.mjs')
 if ($LASTEXITCODE -ne 0) { throw 'Frontend tests failed.' }
+& node --test (Join-Path $PSScriptRoot 'runner-version-guard.test.mjs')
+if ($LASTEXITCODE -ne 0) { throw 'Runner version guard tests failed.' }

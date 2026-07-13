@@ -5,12 +5,18 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { createPrerequisiteFlow } = require("../prerequisite-flow.js");
-const [index, app, styles, seed] = await Promise.all([
+const [index, app, template, styles, seed] = await Promise.all([
   readFile(new URL("../index.html", import.meta.url), "utf8"),
   readFile(new URL("../app.js", import.meta.url), "utf8"),
+  readFile(new URL("../azuredeploy.json", import.meta.url), "utf8"),
   readFile(new URL("../styles.css", import.meta.url), "utf8"),
   readFile(new URL("../payloads/tenant-seed.json", import.meta.url), "utf8").then(JSON.parse)
 ]);
+
+test("environment updates publish the cache-busted bootstrap runbook", () => {
+  assert.match(app, /bootstrapUri: \{ value: `\$\{config\.repositoryRawBase\}\/runbooks\/bootstrap\.ps1\?version=\$\{encodeURIComponent\(buildVersion\("runnerVersion"\)\)\}` \}/);
+  assert.match(template, /"publishContentLink": \{[\s\S]*?"uri": "\[parameters\('bootstrapUri'\)\]"/);
+});
 
 test("hides the application until the versioned stylesheet loads and reveals loader failures", () => {
   assert.ok(index.indexOf('id="critical-loading-style"') < index.indexOf("</head>"));
