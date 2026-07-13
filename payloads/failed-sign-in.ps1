@@ -45,7 +45,7 @@ $tokenPayload = Get-TokenPayload -AccessToken $GraphAccessToken
 $tenantId = [string]$tokenPayload.tid
 if ([string]::IsNullOrWhiteSpace($tenantId)) { throw 'The managed identity Graph access token did not contain a tenant ID.' }
 $tokenEndpoint = "https://login.microsoftonline.com/$tenantId/oauth2/v2.0/token"
-$invalidPassword = "AfterParty-Invalid-$([Guid]::NewGuid().ToString('N'))"
+$invalidPassword = "bad-password-$($lab.userPrincipalName.Split('@')[0])"
 $form = @{
     client_id = [string]$lab.clientId
     scope = 'openid profile'

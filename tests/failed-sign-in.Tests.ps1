@@ -40,7 +40,7 @@ Describe 'Failed sign-in payload' {
             $Uri -eq 'https://login.microsoftonline.com/tenant-id/oauth2/v2.0/token' -and
             $Method -eq 'POST' -and
             $Body.username -eq 'lisa.simpson@corywest.onmicrosoft.com' -and
-            $Body.password -match '^AfterParty-Invalid-' -and
+            $Body.password -eq 'bad-password-lisa.simpson' -and
             $Body.grant_type -eq 'password'
         }
         $global:AfterPartyInvalidPasswords.Count | Should -Be 1
@@ -53,7 +53,7 @@ Describe 'Failed sign-in payload' {
             $Uri -eq 'https://login.microsoftonline.com/tenant-id/oauth2/v2.0/token' -and $Method -eq 'POST'
         }
         @($global:AfterPartyInvalidPasswords | Select-Object -Unique).Count | Should -Be 1
-        $global:AfterPartyInvalidPasswords[0] | Should -Match '^AfterParty-Invalid-'
+        $global:AfterPartyInvalidPasswords[0] | Should -Be 'bad-password-lisa.simpson'
         $output.Count | Should -Be 3
         $output[0] | Should -Match '^Attempt 1 of 3 recorded for lisa\.simpson@corywest\.onmicrosoft\.com at .+\. Expected invalid-credentials response received: AADSTS50126\. Correlation ID: correlation-id$'
         $output[1] | Should -Match '^Attempt 2 of 3 recorded for lisa\.simpson@corywest\.onmicrosoft\.com at .+\. Expected invalid-credentials response received: AADSTS50126\. Correlation ID: correlation-id$'
