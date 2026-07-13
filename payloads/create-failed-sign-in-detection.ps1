@@ -40,6 +40,47 @@ function Get-GraphStatusCode {
     return 0
 }
 
+function Get-GraphResponseHeader {
+    param($ErrorRecord, [string] $Name)
+    if ($ErrorRecord.Exception.Data.Contains('ResponseHeaders')) {
+        $dataHeaders = $ErrorRecord.Exception.Data['ResponseHeaders']
+        if ($null -ne $dataHeaders -and $null -ne $dataHeaders[$Name]) { return [string]$dataHeaders[$Name] }
+    }
+    $headers = $ErrorRecord.Exception.Response.Headers
+    if ($null -eq $headers) { return $null }
+    try {
+        $values = @($headers.GetValues($Name))
+        if ($values.Count) { return [string]$values[0] }
+    } catch { }
+    try {
+        $value = $headers[$Name]
+        if ($null -ne $value) { return [string]$value }
+    } catch { }
+    try {
+        $property = $headers.psobject.Properties | Where-Object { $_.Name -ieq $Name } | Select-Object -First 1
+        if ($null -ne $property) { return [string]$property.Value }
+    } catch { }
+    return $null
+}
+
+function Get-GraphErrorBody {
+    param($ErrorRecord)
+    if (-not [string]::IsNullOrWhiteSpace([string]$ErrorRecord.ErrorDetails.Message)) {
+        return [string]$ErrorRecord.ErrorDetails.Message
+    }
+    if ($ErrorRecord.Exception.Data.Contains('GraphErrorBody')) {
+        return [string]$ErrorRecord.Exception.Data['GraphErrorBody']
+    }
+    try {
+        $stream = $ErrorRecord.Exception.Response.GetResponseStream()
+        if ($null -ne $stream) {
+            $reader = [System.IO.StreamReader]::new($stream)
+            try { return $reader.ReadToEnd() } finally { $reader.Dispose() }
+        }
+    } catch { }
+    return $null
+}
+
 function Invoke-Graph {
     param([string] $Method, [string] $Path, $Body, [string] $ApiVersion = 'v1.0')
     $uri = "https://graph.microsoft.com/$ApiVersion$Path"
@@ -52,18 +93,28 @@ function Invoke-Graph {
         return Invoke-RestMethod @parameters
     } catch {
         $statusCode = Get-GraphStatusCode -ErrorRecord $_
-        $errorBody = $_.ErrorDetails.Message
+        $errorBody = Get-GraphErrorBody -ErrorRecord $_
         $graphCode = 'Unknown'
         $graphMessage = $_.Exception.Message
+        $requestId = Get-GraphResponseHeader -ErrorRecord $_ -Name 'request-id'
+        $responseDate = Get-GraphResponseHeader -ErrorRecord $_ -Name 'Date'
         if (-not [string]::IsNullOrWhiteSpace([string]$errorBody)) {
             try {
                 $graphError = $errorBody | ConvertFrom-Json
                 if ($graphError.error.code) { $graphCode = [string]$graphError.error.code }
                 if ($graphError.error.message) { $graphMessage = [string]$graphError.error.message }
+                if ([string]::IsNullOrWhiteSpace($requestId) -and $graphError.error.innerError.'request-id') { $requestId = [string]$graphError.error.innerError.'request-id' }
+                if ([string]::IsNullOrWhiteSpace($responseDate) -and $graphError.error.innerError.date) {
+                    $innerDate = $graphError.error.innerError.date
+                    $responseDate = if ($innerDate -is [DateTime]) { $innerDate.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ') } else { [string]$innerDate }
+                }
             } catch { }
         }
         $statusText = if ($statusCode) { [string]$statusCode } else { 'unknown' }
-        $exception = [System.Exception]::new("Microsoft Graph request failed: $Method $uri; HTTP $statusText; code: $graphCode; message: $graphMessage", $_.Exception)
+        $diagnostic = "Microsoft Graph request failed: $Method $uri; HTTP $statusText; code: $graphCode; message: $graphMessage"
+        if (-not [string]::IsNullOrWhiteSpace($requestId)) { $diagnostic += "; request-id: $requestId" }
+        if (-not [string]::IsNullOrWhiteSpace($responseDate)) { $diagnostic += "; response date: $responseDate" }
+        $exception = [System.Exception]::new($diagnostic, $_.Exception)
         if ($statusCode) { $exception.Data['StatusCode'] = $statusCode }
         throw $exception
     }
@@ -97,6 +148,13 @@ MatchingFailures
 | top 1 by ClusterWindowEnd desc, ClusterWindowStart desc
 | project Timestamp, ReportId, AccountUpn, ApplicationId, FailureCount, ClusterWindowStart, ClusterWindowEnd, CorrelationIds
 "@.Trim()
+$alertTemplate = @{
+    title = [string]$definition.displayName
+    description = [string]$definition.description
+    severity = [string]$definition.severity
+    category = [string]$definition.category
+    recommendedActions = 'Review the related sign-in activity.'
+}
 $rule = @{
     '@odata.type' = '#microsoft.graph.security.detectionRule'
     id = [string]$definition.id
@@ -106,14 +164,7 @@ $rule = @{
     queryCondition = @{ queryText = $query }
     schedule = @{ frequency = [string]$definition.frequency }
     detectionAction = @{
-        alertTemplate = @{
-            title = [string]$definition.displayName
-            description = [string]$definition.description
-            severity = [string]$definition.severity
-            category = [string]$definition.category
-            recommendedActions = 'Review the related sign-in activity.'
-        }
-        automatedActions = @{}
+        alertTemplate = $alertTemplate
     }
 }
 $path = "/security/rules/detectionRules/$([Uri]::EscapeDataString([string]$definition.id))"
@@ -173,7 +224,15 @@ switch ([string]$existing.status) {
     }
     'disabled' {
         $needsRepair = Test-RuleNeedsRepair -ExistingRule $existing
-        Invoke-Graph -Method PATCH -Path $path -Body $rule -ApiVersion beta | Out-Null
+        $repairRule = $rule.Clone()
+        $repairRule.Remove('@odata.type')
+        $repairRule.Remove('id')
+        $repairRule.detectionAction = @{
+            alertTemplate = $alertTemplate
+            automatedActions = $null
+            responseActions = $null
+        }
+        Invoke-Graph -Method PATCH -Path $path -Body $repairRule -ApiVersion beta | Out-Null
         $verified = Invoke-Graph -Method GET -Path $path -ApiVersion beta
         Assert-AlertOnlyRule -VerifiedRule $verified -ExpectedStatus 'enabled'
         $outcome = if ($needsRepair) { 'repaired and enabled' } else { 'enabled' }

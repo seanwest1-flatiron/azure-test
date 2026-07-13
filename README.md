@@ -12,4 +12,5 @@ Do not connect a production tenant. Use a dedicated tenant where lab-created use
 
 - [Project overview](docs/project-overview.md) — product model, architecture, and user experience
 - [Tenant baseline](docs/tenant-baseline.md) — expected licenses, users, groups, and memberships
+- [Testing and live validation](docs/testing.md) — mocked tests and explicit authorization boundaries
 - [Coding-agent instructions](AGENTS.md) — durable repository working conventions

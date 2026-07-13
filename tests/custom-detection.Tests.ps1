@@ -5,6 +5,7 @@ Describe 'Failed sign-in custom detection payload' {
 
     BeforeEach {
         $global:AfterPartyDetectionRule = $null
+        $global:AfterPartyDetectionCreateError = $null
         $global:AfterPartyDetectionDefinition = [pscustomobject]@{
             id = 'after-party-lisa-aadsts50126-three-in-one-hour'
             displayName = 'Lisa Simpson repeated invalid-password sign-ins'
@@ -45,6 +46,7 @@ Describe 'Failed sign-in custom detection payload' {
                 }
             }
             if ($Uri -eq 'https://graph.microsoft.com/beta/security/rules/detectionRules' -and $Method -eq 'POST') {
+                if ($null -ne $global:AfterPartyDetectionCreateError) { throw $global:AfterPartyDetectionCreateError }
                 $global:AfterPartyDetectionRule = $Body | ConvertFrom-Json
                 return $global:AfterPartyDetectionRule
             }
@@ -68,11 +70,10 @@ Describe 'Failed sign-in custom detection payload' {
             $Body -match 'arg_max\(Timestamp, ReportId\)' -and
             $Body -match 'top 1 by ClusterWindowEnd desc, ClusterWindowStart desc' -and
             $Body -match 'project Timestamp, ReportId, AccountUpn, ApplicationId, FailureCount' -and
-            $Body -match '"automatedActions"\s*:\s*\{\s*\}' -and
-            $Body -notmatch 'responseActions|disableUser|resetPassword'
+            $Body -notmatch 'automatedActions|responseActions|disableUser|resetPassword'
         }
         $global:AfterPartyDetectionRule.status | Should -Be 'enabled'
-        @($global:AfterPartyDetectionRule.detectionAction.automatedActions.psobject.Properties).Count | Should -Be 0
+        $global:AfterPartyDetectionRule.detectionAction.psobject.Properties.Name | Should -Not -Contain 'automatedActions'
         ($output -join "`n") | Should -Match 'created and enabled for lisa\.simpson@student\.onmicrosoft\.com'
         ($output -join "`n") | Should -Match 'normal immediate first evaluation'
     }
@@ -108,7 +109,8 @@ Describe 'Failed sign-in custom detection payload' {
         $output = & $payloadPath -GraphAccessToken 'graph-token' -TenantDomain 'school.onmicrosoft.com'
 
         $global:AfterPartyDetectionRule.status | Should -Be 'enabled'
-        @($global:AfterPartyDetectionRule.detectionAction.automatedActions.psobject.Properties).Count | Should -Be 0
+        $global:AfterPartyDetectionRule.detectionAction.automatedActions | Should -BeNullOrEmpty
+        $global:AfterPartyDetectionRule.detectionAction.responseActions | Should -BeNullOrEmpty
         ($output -join "`n") | Should -Match 'repaired and enabled'
         ($output -join "`n") | Should -Match 'alert-only with no automated remediation'
     }
@@ -143,5 +145,20 @@ Describe 'Failed sign-in custom detection payload' {
         ($output -join "`n") | Should -Match 'auto-disabled by Defender and was left unchanged'
         ($output -join "`n") | Should -Match '2026-07-13T12:00:00Z'
         ($output -join "`n") | Should -Match 'queryTimeout'
+    }
+
+    It 'reports the Graph response code, message, request id, and response date without exposing the token' {
+        $exception = [System.Exception]::new('400 Bad Request')
+        $exception.Data['StatusCode'] = 400
+        $exception.Data['GraphErrorBody'] = '{"error":{"code":"BadRequest","message":"Invalid automatedActions payload.","innerError":{"request-id":"request-123","date":"2026-07-13T13:00:00Z"}}}'
+        $global:AfterPartyDetectionCreateError = $exception
+
+        { & $payloadPath -GraphAccessToken 'graph-token-that-must-not-appear' -TenantDomain 'school.onmicrosoft.com' } |
+            Should -Throw '*POST https://graph.microsoft.com/beta/security/rules/detectionRules; HTTP 400; code: BadRequest; message: Invalid automatedActions payload.; request-id: request-123; response date: 2026-07-13T13:00:00Z*'
+        try {
+            & $payloadPath -GraphAccessToken 'graph-token-that-must-not-appear' -TenantDomain 'school.onmicrosoft.com'
+        } catch {
+            $_.Exception.ToString() | Should -Not -Match 'graph-token-that-must-not-appear'
+        }
     }
 }
