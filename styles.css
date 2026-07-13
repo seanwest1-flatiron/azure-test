@@ -13,6 +13,9 @@ p { color: #c8d0e7; line-height: 1.6; }
 .global-status { padding: 12px 16px; font-size: .95rem; }
 .account-control { position: relative; align-self: flex-end; }
 .account-sign-in, .account-menu > summary { max-width: 260px; min-height: 42px; padding: 10px 14px; border: 1px solid #59657f; border-radius: 10px; color: #fff; font-weight: 750; line-height: 1.2; text-align: left; }
+.account-sign-in.secondary { display: inline-flex; max-width: none; min-height: 48px; align-items: center; gap: 13px; padding: 11px 18px; border-color: #d1d5db; background: #fff; color: #111; font-size: 1rem; font-weight: 650; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,.18); }
+.account-sign-in.secondary:hover:not(:disabled) { border-color: #b6bcc6; background: #f5f5f5; box-shadow: 0 3px 10px rgba(0,0,0,.24); }
+.microsoft-mark { width: 23px; height: 23px; flex: 0 0 23px; }
 .account-menu { color: #c8d0e7; }
 .account-menu > summary { display: flex; align-items: center; cursor: pointer; list-style: none; background: rgba(19,27,51,.92); }
 .account-menu > summary::-webkit-details-marker { display: none; }

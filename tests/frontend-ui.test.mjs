@@ -63,11 +63,14 @@ test("keeps the global status quiet when idle and progress on the selected lab",
 
 test("puts authentication in a responsive account control", () => {
   assert.match(index, /<header class="site-header">[\s\S]*?class="account-control"[\s\S]*?id="sign-in"[\s\S]*?Sign in with Microsoft[\s\S]*?<h1>After Party Labs \(WIP\)<\/h1>/);
+  assert.match(index, /<svg class="microsoft-mark"[^>]*aria-hidden="true"[\s\S]*?#f25022[\s\S]*?#7fba00[\s\S]*?#00a4ef[\s\S]*?#ffb900[\s\S]*?<span>Sign in with Microsoft<\/span>/);
   assert.match(index, /<details id="account-menu" class="account-menu" hidden>[\s\S]*?id="account-button"[\s\S]*?id="account-environment"[\s\S]*?id="sign-out"/);
   assert.match(app, /el\["account-button"\]\.textContent = displayName/);
   assert.match(app, /el\["account-menu"\]\.hidden = !signedIn/);
   assert.match(styles, /\.site-header \{[^}]*flex-direction: column[^}]*align-items: stretch/);
   assert.match(styles, /\.account-control \{ position: relative; align-self: flex-end/);
+  assert.match(styles, /\.account-sign-in\.secondary \{[^}]*background: #fff[^}]*color: #111[^}]*white-space: nowrap/);
+  assert.match(styles, /\.microsoft-mark \{ width: 23px; height: 23px/);
   assert.match(styles, /h1 \{[^}]*text-align: center/);
   assert.match(styles, /button:focus-visible, summary:focus-visible, select:focus-visible/);
 });
