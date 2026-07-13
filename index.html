@@ -128,6 +128,15 @@
       <p id="diagnostics">Loading site and environment details…</p>
     </details>
 
+    <dialog id="update-dialog" class="update-dialog" hidden aria-labelledby="update-dialog-title" aria-describedby="update-dialog-message">
+      <h2 id="update-dialog-title">After Party has been updated</h2>
+      <p id="update-dialog-message">This lab may have changed. Refresh After Party and review the current description before running it.</p>
+      <div class="dialog-actions">
+        <button id="update-cancel" class="secondary" type="button">Cancel</button>
+        <button id="update-refresh" type="button">Refresh now</button>
+      </div>
+    </dialog>
+
     <dialog id="environment-chooser" hidden aria-labelledby="environment-chooser-title" aria-describedby="environment-chooser-message">
       <h2 id="environment-chooser-title">Choose an Azure environment</h2>
       <p id="environment-chooser-message"></p>
@@ -170,17 +179,26 @@
         status.className = "notice error";
       };
       (async () => {
-        const manifestResponse = await fetch(`version.json?nonce=${Date.now()}`, { cache: "no-store" });
+        const nonce = Date.now();
+        const [manifestResponse, deploymentResponse] = await Promise.all([
+          fetch(`version.json?nonce=${nonce}`, { cache: "no-store" }),
+          fetch(`deployment.json?nonce=${nonce}`, { cache: "no-store" })
+        ]);
         if (!manifestResponse.ok) throw new Error(`version manifest returned ${manifestResponse.status}.`);
+        if (!deploymentResponse.ok) throw new Error(`deployment manifest returned ${deploymentResponse.status}.`);
         const manifest = await manifestResponse.json();
+        const deployment = await deploymentResponse.json();
         if (!manifest.siteVersion || !manifest.runnerVersion || !manifest.payloadVersion || !manifest.tenantBaselineVersion) throw new Error("version manifest is incomplete.");
+        if (typeof deployment.commit !== "string" || !deployment.commit || Number.isNaN(Date.parse(deployment.deployedAt))) throw new Error("deployment manifest is incomplete.");
         window.AFTER_PARTY_BUILD = Object.freeze(manifest);
+        window.AFTER_PARTY_LOADED_DEPLOYMENT = Object.freeze(deployment);
         const version = encodeURIComponent(manifest.siteVersion);
         await addStylesheet(`styles.css?v=${version}`);
         document.documentElement.classList.add("styles-ready");
         await addScript(`config.js?v=${version}`);
         await addScript(`msal-browser.min.js?v=${version}`);
         await addScript(`arm-retry.js?v=${version}`);
+        await addScript(`update-gate.js?v=${version}`);
         await addScript(`automation-client.js?v=${version}`);
         await addScript(`runner-permissions.js?v=${version}`);
         await addScript(`prerequisite-flow.js?v=${version}`);

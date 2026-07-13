@@ -25,6 +25,28 @@ test("loads and uses bounded ARM retries without replaying generic side-effectin
   assert.doesNotMatch(app, /method: "POST", retryTransient: true/);
 });
 
+test("captures the loaded commit and gates every lab before prerequisite work", () => {
+  assert.match(index, /fetch\(`deployment\.json\?nonce=\$\{nonce\}`,[^)]*cache: "no-store"/);
+  assert.match(index, /window\.AFTER_PARTY_LOADED_DEPLOYMENT = Object\.freeze\(deployment\)/);
+  assert.match(index, /update-gate\.js\?v=\$\{version\}/);
+  assert.match(app, /loadedCommit: loadedDeployment\.commit/);
+  assert.match(app, /getDeployedCommit: async \(\) => \(await fetchDeploymentInfo\(\)\)\.commit/);
+  assert.match(app, /async function beginLab\(operation, form\) \{[\s\S]*?if \(!\(await frontendUpdateGate\.check\(\)\)\) return;[\s\S]*?prerequisiteFlow\.start\(lab\)/);
+});
+
+test("shows an accessible responsive blocking update dialog with refresh and cancel only", () => {
+  assert.match(index, /<dialog id="update-dialog" class="update-dialog" hidden aria-labelledby="update-dialog-title" aria-describedby="update-dialog-message">/);
+  assert.match(index, /id="update-dialog-title">After Party has been updated<\/h2>/);
+  assert.match(index, /This lab may have changed\. Refresh After Party and review the current description before running it\./);
+  assert.match(index, /id="update-cancel"[^>]*>Cancel<\/button>[\s\S]*?id="update-refresh"[^>]*>Refresh now<\/button>/);
+  assert.doesNotMatch(index, /Run stale|Run anyway|Continue without refresh/i);
+  assert.match(app, /const cancelDialog = event => \{ event\.preventDefault\(\); finish\("cancel"\); \}/);
+  assert.match(app, /el\["update-refresh"\]\.focus\(\)/);
+  assert.match(app, /window\.location\.replace\(updateGateApi\.cacheBustedUrl\(window\.location\.href\)\)/);
+  assert.match(styles, /\.update-dialog \.dialog-actions \{ flex-direction: column-reverse; \}/);
+  assert.match(styles, /\.update-dialog \.dialog-actions button \{ width: 100%; \}/);
+});
+
 test("keeps delegated admin scopes separate from managed-identity application roles", () => {
   assert.match(app, /const GRAPH_SCOPES = \["Application\.Read\.All", "AppRoleAssignment\.ReadWrite\.All"\]/);
   assert.match(app, /"CustomDetection\.ReadWrite\.All"/);

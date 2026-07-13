@@ -4,6 +4,8 @@
   const config = window.AFTER_PARTY_CONFIG;
   const automation = window.AfterPartyAutomation;
   const armRetry = window.AfterPartyArmRetry;
+  const updateGateApi = window.AfterPartyUpdateGate;
+  const loadedDeployment = window.AFTER_PARTY_LOADED_DEPLOYMENT;
   const runnerPermissions = window.AfterPartyRunnerPermissions;
   const prerequisiteApi = window.AfterPartyPrerequisites;
   const ARM = "https://management.azure.com";
@@ -22,7 +24,7 @@
   const apiVersions = Object.freeze({ resources: "2021-04-01", deployments: "2022-09-01", automation: automation.API_VERSION });
   const el = Object.fromEntries([
     "configuration-warning", "status", "sign-in", "sign-out", "account-menu", "account-button", "account-name", "account-username", "account-tenant", "account-environment",
-    "environment-chooser", "environment-chooser-title", "environment-chooser-message", "environment-cancel", "environment-continue", "subscription-field", "resource-group-field",
+    "update-dialog", "update-refresh", "update-cancel", "environment-chooser", "environment-chooser-title", "environment-chooser-message", "environment-cancel", "environment-continue", "subscription-field", "resource-group-field",
     "subscription", "resource-group", "run", "run-file-share", "run-email-triage",
     "run-customer-payment-export", "run-external-email", "run-failed-sign-in", "run-failed-sign-in-three", "run-failed-sign-in-detection", "run-browser-failed-sign-in", "run-browser-failed-sign-in-three", "run-reset-lisa-password", "email-job-status", "file-share-job-status", "message-batch-job-status", "payment-export-job-status", "external-email-job-status", "failed-sign-in-job-status", "failed-sign-in-three-job-status", "failed-sign-in-detection-job-status", "browser-failed-sign-in-job-status", "browser-failed-sign-in-three-job-status", "reset-lisa-password-job-status", "diagnostics"
   ].map(id => [id, document.getElementById(id)]));
@@ -30,7 +32,8 @@
   let account;
   let busy = false;
   let activeRunner = null;
-  let deploymentInfo = null;
+  let deploymentInfo = loadedDeployment || null;
+  let frontendUpdateGate;
   let prerequisiteFlow;
   let prerequisiteStatusElement = null;
   const activeOperations = new Set();
@@ -174,17 +177,37 @@
       : "The environment will be selected when a lab starts.";
   }
 
-  async function loadDeploymentInfo() {
-    try {
-      const response = await fetch(`deployment.json?nonce=${Date.now()}`, { cache: "no-store" });
-      if (!response.ok) throw new Error(`deployment manifest returned ${response.status}`);
-      const value = await response.json();
-      if (typeof value.commit !== "string" || !value.commit || Number.isNaN(Date.parse(value.deployedAt))) throw new Error("deployment manifest is incomplete");
-      deploymentInfo = value;
-    } catch {
-      deploymentInfo = { unavailable: true };
-    }
+  async function fetchDeploymentInfo() {
+    const response = await fetch(`deployment.json?nonce=${Date.now()}`, { cache: "no-store" });
+    if (!response.ok) throw new Error(`deployment manifest returned ${response.status}`);
+    const value = await response.json();
+    if (typeof value.commit !== "string" || !value.commit || Number.isNaN(Date.parse(value.deployedAt))) throw new Error("deployment manifest is incomplete");
+    deploymentInfo = value;
     setDiagnostics();
+    return value;
+  }
+
+  function promptForFrontendRefresh() {
+    const dialog = el["update-dialog"];
+    return new Promise(resolve => {
+      const finish = decision => {
+        el["update-refresh"].removeEventListener("click", refreshChoice);
+        el["update-cancel"].removeEventListener("click", cancelChoice);
+        dialog.removeEventListener("cancel", cancelDialog);
+        if (dialog.open) dialog.close();
+        dialog.hidden = true;
+        resolve(decision);
+      };
+      const refreshChoice = () => finish("refresh");
+      const cancelChoice = () => finish("cancel");
+      const cancelDialog = event => { event.preventDefault(); finish("cancel"); };
+      el["update-refresh"].addEventListener("click", refreshChoice);
+      el["update-cancel"].addEventListener("click", cancelChoice);
+      dialog.addEventListener("cancel", cancelDialog);
+      dialog.hidden = false;
+      dialog.showModal();
+      el["update-refresh"].focus();
+    });
   }
 
   function refreshControls() {
@@ -621,6 +644,7 @@
   async function beginLab(operation, form) {
     const definition = labs[operation];
     if (!definition) throw new Error(`Unknown lab operation: ${operation}`);
+    if (!(await frontendUpdateGate.check())) return;
     const lab = { ...definition, form };
     prerequisiteStatusElement = el[lab.statusId];
     setJobStatus(prerequisiteStatusElement, `${lab.label}: checking sign-in…`, "queued");
@@ -702,7 +726,6 @@
   }
 
   async function initialize() {
-    void loadDeploymentInfo();
     if (!config?.clientId) {
       el["configuration-warning"].hidden = false;
       el["configuration-warning"].textContent = "Set the Entra SPA application client ID in config.js before using this site.";
@@ -711,7 +734,14 @@
       return;
     }
     if (!armRetry) throw new Error("arm-retry.js is missing or did not load.");
+    if (!updateGateApi || !loadedDeployment?.commit) throw new Error("The loaded frontend commit is unavailable.");
     if (!window.msal) throw new Error("msal-browser.min.js is missing or did not load.");
+    frontendUpdateGate = updateGateApi.createUpdateGate({
+      loadedCommit: loadedDeployment.commit,
+      getDeployedCommit: async () => (await fetchDeploymentInfo()).commit,
+      promptForRefresh: promptForFrontendRefresh,
+      refresh: () => window.location.replace(updateGateApi.cacheBustedUrl(window.location.href))
+    });
     msalClient = new msal.PublicClientApplication({ auth: { clientId: config.clientId, authority: config.authority, redirectUri: config.redirectUri }, cache: { cacheLocation: "sessionStorage" } });
     if (typeof msalClient.initialize === "function") await msalClient.initialize();
     configurePrerequisiteFlow();

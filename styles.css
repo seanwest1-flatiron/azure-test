@@ -71,4 +71,6 @@ dialog label { margin-top: 18px; }
   .site-header { gap: 12px; }
   .fields { grid-template-columns: 1fr; }
   .section-heading { align-items: flex-start; flex-direction: column; }
+  .update-dialog .dialog-actions { flex-direction: column-reverse; }
+  .update-dialog .dialog-actions button { width: 100%; }
 }
