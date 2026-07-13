@@ -13,6 +13,7 @@ Describe 'Lisa Simpson Temporary Access Pass sign-in payload' {
         $global:AfterPartyTapBody = $null
         $global:AfterPartyTapContainerBody = $null
         $global:AfterPartyTapResult = 'confirmed'
+        $global:AfterPartyExistingTapMethods = @()
         Mock Start-Sleep {}
         Mock Invoke-RestMethod {
             param($Uri, $Method, $Body)
@@ -41,6 +42,9 @@ Describe 'Lisa Simpson Temporary Access Pass sign-in payload' {
             if ($Method -eq 'POST' -and $uriText -eq 'https://graph.microsoft.com/v1.0/users/lisa-id/authentication/temporaryAccessPassMethods') {
                 $global:AfterPartyTapBody = [string]$Body
                 return [pscustomobject]@{ id = 'tap-method-id'; temporaryAccessPass = $global:AfterPartyTap }
+            }
+            if ($Method -eq 'GET' -and $uriText -eq 'https://graph.microsoft.com/v1.0/users/lisa-id/authentication/temporaryAccessPassMethods') {
+                return [pscustomobject]@{ value = $global:AfterPartyExistingTapMethods }
             }
             if ($Method -eq 'DELETE' -and $uriText -eq 'https://graph.microsoft.com/v1.0/users/lisa-id/authentication/temporaryAccessPassMethods/tap-method-id') { return $null }
             if ($uriText -like 'http://identity.test/token?*') { return [pscustomobject]@{ access_token = 'arm-access-token' } }
@@ -88,5 +92,15 @@ Describe 'Lisa Simpson Temporary Access Pass sign-in payload' {
 
         Should -Invoke Invoke-RestMethod -Times 1 -ParameterFilter { $Method -eq 'DELETE' -and ([string]$Uri) -match '/temporaryAccessPassMethods/tap-method-id$' }
         Should -Invoke Invoke-RestMethod -Times 1 -ParameterFilter { $Method -eq 'DELETE' -and ([string]$Uri) -match '/containerGroups/after-party-tap-' }
+    }
+
+    It 'does not replace or expose a pre-existing Lisa TAP method' {
+        $global:AfterPartyExistingTapMethods = @([pscustomobject]@{ id = 'existing-tap'; temporaryAccessPass = $null })
+
+        { & $payloadPath -GraphAccessToken $graphAccessToken -TenantDomain 'student.onmicrosoft.com' -SubscriptionId 'subscription-id' -ResourceGroup 'after-test' } |
+            Should -Throw '*already has a Temporary Access Pass method*'
+
+        Should -Invoke Invoke-RestMethod -Times 0 -ParameterFilter { $Method -eq 'POST' -and ([string]$Uri) -match '/temporaryAccessPassMethods$' }
+        Should -Invoke Invoke-RestMethod -Times 0 -ParameterFilter { ([string]$Uri) -match 'Microsoft.ContainerInstance/containerGroups' }
     }
 }

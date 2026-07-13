@@ -32,6 +32,13 @@ function Get-HttpErrorDetail {
     try { $status = [int]$ErrorRecord.Exception.Response.StatusCode } catch { }
     $message = [string]$ErrorRecord.Exception.Message
     $detail = [string]$ErrorRecord.ErrorDetails.Message
+    if ([string]::IsNullOrWhiteSpace($detail)) {
+        try {
+            if ($ErrorRecord.Exception.Response.Content) {
+                $detail = [string]$ErrorRecord.Exception.Response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+            }
+        } catch { }
+    }
     if (-not [string]::IsNullOrWhiteSpace($detail)) {
         try {
             $parsed = $detail | ConvertFrom-Json
@@ -111,6 +118,8 @@ $containerAttempted = $false
 $primaryError = $null
 $cleanupErrors = @()
 try {
+    $existingTapMethods = @((Invoke-Graph -Method GET -Path "/users/$($user.id)/authentication/temporaryAccessPassMethods").value)
+    if ($existingTapMethods.Count) { throw 'Lisa Simpson already has a Temporary Access Pass method. The lab did not replace or expose it.' }
     $tap = Invoke-Graph -Method POST -Path "/users/$($user.id)/authentication/temporaryAccessPassMethods" -Body @{ lifetimeInMinutes = 10; isUsableOnce = $true }
     $tapId = [string]$tap.id
     $temporaryAccessPass = [string]$tap.temporaryAccessPass
