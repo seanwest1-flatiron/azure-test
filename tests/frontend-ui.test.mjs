@@ -60,3 +60,9 @@ test("lab descriptions use seeded display names without the tenant domain", () =
   assert.match(index, /Lisa Simpson/);
   assert.doesNotMatch(index, /@corywest\.onmicrosoft\.com/i);
 });
+
+test("wires the three non-interactive failed sign-ins card to the existing ROPC payload", () => {
+  assert.match(index, /<h2>Three non-interactive failed sign-ins<\/h2>/);
+  assert.match(index, /Submits three incorrect-password sign-ins for Lisa Simpson without using a browser\./);
+  assert.match(app, /failedSignInThree: \{[\s\S]*?payloadPath: "payloads\/failed-sign-in\.ps1"[\s\S]*?parameters: \{ AttemptCount: "3" \}/);
+});

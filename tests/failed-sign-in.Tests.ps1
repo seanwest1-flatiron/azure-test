@@ -7,6 +7,7 @@ Describe 'Failed sign-in payload' {
     }
 
     BeforeEach {
+        $global:AfterPartyInvalidPasswords = @()
         Mock Invoke-RestMethod {
             param($Uri, $Method, $Body)
             if ($Uri -like '*/version.json?nonce=*') { return [pscustomobject]@{ payloadVersion = '2026.07.12.9' } }
@@ -17,6 +18,7 @@ Describe 'Failed sign-in payload' {
                 }
             }
             if ($Uri -eq 'https://login.microsoftonline.com/tenant-id/oauth2/v2.0/token') {
+                $global:AfterPartyInvalidPasswords += [string]$Body.password
                 $record = [Management.Automation.ErrorRecord]::new(
                     [System.Exception]::new('Response status code does not indicate success: 400 (Bad Request).'),
                     'TokenRequestFailed',
@@ -33,8 +35,7 @@ Describe 'Failed sign-in payload' {
     It 'treats one invalid-credential response as a successful lab run' {
         $output = & $payloadPath -GraphAccessToken $graphAccessToken
 
-        ($output -contains 'Failed sign-in recorded for lisa.simpson@corywest.onmicrosoft.com. Expected invalid-credentials response received: AADSTS50126.') | Should -Be $true
-        ($output -contains 'Entra correlation ID: correlation-id') | Should -Be $true
+        @($output | Where-Object { $_ -match '^Attempt 1 of 1 recorded for lisa\.simpson@corywest\.onmicrosoft\.com at .+\. Expected invalid-credentials response received: AADSTS50126\. Correlation ID: correlation-id$' }).Count | Should -Be 1
         Should -Invoke Invoke-RestMethod -Times 1 -ParameterFilter {
             $Uri -eq 'https://login.microsoftonline.com/tenant-id/oauth2/v2.0/token' -and
             $Method -eq 'POST' -and
@@ -42,5 +43,17 @@ Describe 'Failed sign-in payload' {
             $Body.password -match '^AfterParty-Invalid-' -and
             $Body.grant_type -eq 'password'
         }
+        $global:AfterPartyInvalidPasswords.Count | Should -Be 1
+    }
+
+    It 'submits three sequential requests with one invalid password for the operation' {
+        $output = & $payloadPath -GraphAccessToken $graphAccessToken -AttemptCount 3
+
+        Should -Invoke Invoke-RestMethod -Times 3 -ParameterFilter {
+            $Uri -eq 'https://login.microsoftonline.com/tenant-id/oauth2/v2.0/token' -and $Method -eq 'POST'
+        }
+        @($global:AfterPartyInvalidPasswords | Select-Object -Unique).Count | Should -Be 1
+        $global:AfterPartyInvalidPasswords[0] | Should -Match '^AfterParty-Invalid-'
+        @($output | Where-Object { $_ -match '^Attempt [1-3] of 3 recorded for lisa\.simpson@corywest\.onmicrosoft\.com at .+\. Expected invalid-credentials response received: AADSTS50126\. Correlation ID: correlation-id$' }).Count | Should -Be 3
     }
 }

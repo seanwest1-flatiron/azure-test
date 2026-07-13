@@ -17,7 +17,7 @@
   const el = Object.fromEntries([
     "configuration-warning", "status", "sign-in", "sign-out", "account", "authorization", "authorize-azure",
     "subscription", "resource-group", "install", "run", "run-file-share", "run-email-triage",
-    "run-customer-payment-export", "run-external-email", "run-tenant-seed", "run-failed-sign-in", "run-browser-failed-sign-in", "run-browser-failed-sign-in-three", "email-job-status", "file-share-job-status", "message-batch-job-status", "payment-export-job-status", "external-email-job-status", "tenant-seed-job-status", "failed-sign-in-job-status", "browser-failed-sign-in-job-status", "browser-failed-sign-in-three-job-status", "diagnostics"
+    "run-customer-payment-export", "run-external-email", "run-tenant-seed", "run-failed-sign-in", "run-failed-sign-in-three", "run-browser-failed-sign-in", "run-browser-failed-sign-in-three", "email-job-status", "file-share-job-status", "message-batch-job-status", "payment-export-job-status", "external-email-job-status", "tenant-seed-job-status", "failed-sign-in-job-status", "failed-sign-in-three-job-status", "browser-failed-sign-in-job-status", "browser-failed-sign-in-three-job-status", "diagnostics"
   ].map(id => [id, document.getElementById(id)]));
   let msalClient;
   let account;
@@ -36,6 +36,7 @@
     sendCustomerPaymentExport: { operation: "sendCustomerPaymentExport", payloadPath: "payloads/send-customer-payment-export.ps1", label: "Customer payment export", statusId: "payment-export-job-status" },
     sendExternalEmail: { operation: "sendExternalEmail", payloadPath: "payloads/send-external-email.ps1", label: "External email", statusId: "external-email-job-status" },
     failedSignIn: { operation: "failedSignIn", payloadPath: "payloads/failed-sign-in.ps1", label: "Failed sign-in", statusId: "failed-sign-in-job-status" },
+    failedSignInThree: { operation: "failedSignInThree", payloadPath: "payloads/failed-sign-in.ps1", label: "Three non-interactive failed sign-ins", statusId: "failed-sign-in-three-job-status", parameters: { AttemptCount: "3" } },
     browserFailedSignIn: { operation: "browserFailedSignIn", payloadPath: "payloads/browser-failed-sign-in.ps1", label: "Browser failed sign-in", statusId: "browser-failed-sign-in-job-status" },
     browserFailedSignInThree: { operation: "browserFailedSignInThree", payloadPath: "payloads/browser-failed-sign-in.ps1", label: "Three browser failed sign-ins", statusId: "browser-failed-sign-in-three-job-status", parameters: { AttemptCount: "3" } }
   });
@@ -169,6 +170,7 @@
       sendExternalEmail: el["run-external-email"],
       seedTenant: el["run-tenant-seed"],
       failedSignIn: el["run-failed-sign-in"],
+      failedSignInThree: el["run-failed-sign-in-three"],
       browserFailedSignIn: el["run-browser-failed-sign-in"],
       browserFailedSignInThree: el["run-browser-failed-sign-in-three"]
     }).forEach(([operation, button]) => {
@@ -653,6 +655,7 @@
     finally { setBusy(false); }
   }));
   bind("run-failed-sign-in", "click", () => handleAction(() => beginLab("failedSignIn")));
+  bind("run-failed-sign-in-three", "click", () => handleAction(() => beginLab("failedSignInThree")));
   bind("run-browser-failed-sign-in", "click", () => handleAction(() => beginLab("browserFailedSignIn")));
   bind("run-browser-failed-sign-in-three", "click", () => handleAction(() => beginLab("browserFailedSignInThree")));
   initialize().catch(error => setStatus(explainError(error), "error"));

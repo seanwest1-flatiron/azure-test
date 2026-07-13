@@ -40,4 +40,15 @@ Describe 'After Party bootstrap payload URL' {
 
         ($output -contains 'Worker context: subscription-id/after-test') | Should -Be $true
     }
+
+    It 'forwards an explicit attempt count to the non-interactive failed sign-in payload' {
+        Mock Invoke-WebRequest {
+            param($Uri)
+            return [pscustomobject]@{ Content = 'param([string] $GraphAccessToken, [int] $AttemptCount) "Attempt count: $AttemptCount"' }
+        }
+
+        $output = & $bootstrapPath -LabPath 'payloads/failed-sign-in.ps1' -AttemptCount '3'
+
+        ($output -contains 'Attempt count: 3') | Should -Be $true
+    }
 }

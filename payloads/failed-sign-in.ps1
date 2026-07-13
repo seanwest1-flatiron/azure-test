@@ -2,7 +2,10 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [string] $GraphAccessToken
+    [string] $GraphAccessToken,
+    [Parameter()]
+    [ValidateRange(1, 3)]
+    [int] $AttemptCount = 1
 )
 
 $ErrorActionPreference = 'Stop'
@@ -51,24 +54,27 @@ $form = @{
     grant_type = 'password'
 }
 
-try {
-    Invoke-RestMethod -Method POST -Uri $tokenEndpoint -ContentType 'application/x-www-form-urlencoded' -Body $form | Out-Null
-    throw 'The failed sign-in request unexpectedly succeeded; no invalid-credentials record was generated.'
-} catch {
-    if ($_.Exception.Message -eq 'The failed sign-in request unexpectedly succeeded; no invalid-credentials record was generated.') { throw }
-    $responseText = $_.ErrorDetails.Message
-    if ([string]::IsNullOrWhiteSpace([string]$responseText)) { throw }
+for ($attempt = 1; $attempt -le $AttemptCount; $attempt += 1) {
+    $attemptTimestampUtc = [DateTime]::UtcNow.ToString('o')
     try {
-        $response = $responseText | ConvertFrom-Json
+        Invoke-RestMethod -Method POST -Uri $tokenEndpoint -ContentType 'application/x-www-form-urlencoded' -Body $form | Out-Null
+        throw 'The failed sign-in request unexpectedly succeeded; no invalid-credentials record was generated.'
     } catch {
-        throw "The Entra token endpoint returned an unreadable error response: $($_.Exception.Message)"
+        if ($_.Exception.Message -eq 'The failed sign-in request unexpectedly succeeded; no invalid-credentials record was generated.') { throw }
+        $responseText = $_.ErrorDetails.Message
+        if ([string]::IsNullOrWhiteSpace([string]$responseText)) { throw }
+        try {
+            $response = $responseText | ConvertFrom-Json
+        } catch {
+            throw "The Entra token endpoint returned an unreadable error response: $($_.Exception.Message)"
+        }
+        $isInvalidCredentials = $response.error -eq 'invalid_grant' -and (@($response.error_codes) -contains 50126)
+        if (-not $isInvalidCredentials) {
+            throw "The Entra token endpoint did not return the expected invalid-credentials response. Error: $($response.error). Description: $($response.error_description)"
+        }
+        $entraCode = if ($response.error_description -match 'AADSTS[0-9]+') { $Matches[0] } else { 'invalid_grant' }
+        if ($entraCode -ne 'AADSTS50126') { throw "The Entra token endpoint did not return AADSTS50126. Received: $entraCode" }
+        if ([string]::IsNullOrWhiteSpace([string]$response.correlation_id)) { throw 'The Entra token endpoint did not return a correlation ID.' }
+        Write-Output "Attempt $attempt of $AttemptCount recorded for $($lab.userPrincipalName) at $attemptTimestampUtc. Expected invalid-credentials response received: $entraCode. Correlation ID: $($response.correlation_id)"
     }
-    $isInvalidCredentials = $response.error -eq 'invalid_grant' -and (@($response.error_codes) -contains 50126)
-    if (-not $isInvalidCredentials) {
-        throw "The Entra token endpoint did not return the expected invalid-credentials response. Error: $($response.error). Description: $($response.error_description)"
-    }
-    $entraCode = if ($response.error_description -match 'AADSTS[0-9]+') { $Matches[0] } else { 'invalid_grant' }
-    Write-Output "Failed sign-in recorded for $($lab.userPrincipalName). Expected invalid-credentials response received: $entraCode."
-    if ($response.correlation_id) { Write-Output "Entra correlation ID: $($response.correlation_id)" }
-    if ($response.timestamp) { Write-Output "Entra timestamp: $($response.timestamp)" }
 }

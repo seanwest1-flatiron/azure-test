@@ -70,7 +70,7 @@ async function main() {
   console.error(`Starting ${args.lab} in ${runner.automationAccountName}. Job ID: ${jobId}`);
   const parameters = args.lab === "payloads/browser-failed-sign-in.ps1"
     ? { SubscriptionId: subscriptionId, ResourceGroup: args["resource-group"], ...(args["attempt-count"] ? { AttemptCount: args["attempt-count"] } : {}) }
-    : {};
+    : args.lab === "payloads/failed-sign-in.ps1" && args["attempt-count"] ? { AttemptCount: args["attempt-count"] } : {};
   const { jobPath } = await automation.startJob({ requestJson, runner, payloadPath: args.lab, jobId, parameters });
   let lastStatus;
   const result = await automation.waitForJob({

@@ -55,4 +55,7 @@ if ($LabPath -eq 'payloads/browser-failed-sign-in.ps1') {
     $payloadParameters.ResourceGroup = $ResourceGroup
     if (-not [string]::IsNullOrWhiteSpace($AttemptCount)) { $payloadParameters.AttemptCount = $AttemptCount }
 }
+if ($LabPath -eq 'payloads/failed-sign-in.ps1' -and -not [string]::IsNullOrWhiteSpace($AttemptCount)) {
+    $payloadParameters.AttemptCount = $AttemptCount
+}
 & $payload @payloadParameters
