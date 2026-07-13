@@ -126,4 +126,14 @@ Describe 'Lisa Simpson Temporary Access Pass sign-in payload' {
         $message | Should -Match 'request-id: graph-request-id; date: Mon, 13 Jul 2026 12:00:00 GMT'
         $message | Should -Not -Match [regex]::Escape($graphAccessToken)
     }
+
+    It 'enables capture mode without putting the TAP in a normal environment value' {
+        & $payloadPath -GraphAccessToken $graphAccessToken -TenantDomain 'student.onmicrosoft.com' -SubscriptionId 'subscription-id' -ResourceGroup 'after-test' -CaptureBrowserPage | Out-Null
+
+        $container = $global:AfterPartyTapContainerBody | ConvertFrom-Json
+        $environment = @($container.properties.containers[0].properties.environmentVariables)
+        ($environment | Where-Object name -eq 'CAPTURE_PAGE_ON_FAILURE').value | Should -Be '1'
+        ($environment | Where-Object name -eq 'TEMPORARY_ACCESS_PASS').PSObject.Properties.Name | Should -Contain 'secureValue'
+        ($environment | Where-Object name -eq 'TEMPORARY_ACCESS_PASS').PSObject.Properties.Name | Should -Not -Contain 'value'
+    }
 }

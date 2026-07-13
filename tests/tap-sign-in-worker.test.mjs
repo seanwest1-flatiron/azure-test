@@ -3,7 +3,7 @@ import test from "node:test";
 
 process.env.AFTER_PARTY_WORKER_TEST = "1";
 process.env.TEMPORARY_ACCESS_PASS = "secret-tap-value";
-const { base64Url, createPkce, credentialEntryStage, decodeJwtClaim, isRegistrationInterruption, safeText, tenantUserPrincipalName } = await import("../payloads/tap-sign-in-worker.mjs");
+const { base64Url, createPkce, credentialEntryStage, decodeJwtClaim, diagnosticUrl, isRegistrationInterruption, safeText, tenantUserPrincipalName } = await import("../payloads/tap-sign-in-worker.mjs");
 
 test("builds Lisa's UPN from the connected tenant domain", () => {
   assert.equal(tenantUserPrincipalName("lisa.simpson", "student.onmicrosoft.com"), "lisa.simpson@student.onmicrosoft.com");
@@ -35,4 +35,9 @@ test("redacts TAP and OAuth artifacts and validates the delegated tenant claim",
   assert.equal(safeText("secret-tap-value Bearer token https://localhost/?code=secret&refresh_token=refresh"), "[redacted] Bearer [redacted] https://localhost/?code=[redacted]&refresh_token=[redacted]");
   const payload = Buffer.from(JSON.stringify({ tid: "expected-tenant-id" })).toString("base64url");
   assert.equal(decodeJwtClaim(`header.${payload}.signature`, "tid"), "expected-tenant-id");
+});
+
+test("removes query strings and fragments from captured page locations", () => {
+  assert.equal(diagnosticUrl("https://login.microsoftonline.com/tenant/login?code=secret#fragment"), "https://login.microsoftonline.com/tenant/login");
+  assert.equal(diagnosticUrl("not a url"), "unavailable");
 });

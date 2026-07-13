@@ -6,6 +6,8 @@ const tenantDomain = process.env.TENANT_DOMAIN;
 const clientId = process.env.CLIENT_ID;
 const userAlias = process.env.USER_ALIAS;
 const temporaryAccessPass = process.env.TEMPORARY_ACCESS_PASS;
+const capturePageOnFailure = process.env.CAPTURE_PAGE_ON_FAILURE === "1";
+let pageCaptureEmitted = false;
 
 export function base64Url(value) {
   return Buffer.from(value).toString("base64").replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
@@ -56,6 +58,38 @@ function report(result, details = {}) {
 
 async function visiblePageText(page) {
   try { return safeText(await page.locator("body").innerText(), 1200); } catch { return ""; }
+}
+
+export function diagnosticUrl(value) {
+  try {
+    const url = new URL(value);
+    return `${url.origin}${url.pathname}`;
+  } catch { return "unavailable"; }
+}
+
+async function emitPageCapture(page) {
+  if (!capturePageOnFailure || pageCaptureEmitted || !page) return;
+  pageCaptureEmitted = true;
+  try {
+    const diagnostic = {
+      title: safeText(await page.title(), 200),
+      url: diagnosticUrl(page.url()),
+      headings: await page.locator("h1:visible, h2:visible, h3:visible, h4:visible, h5:visible, h6:visible").allInnerTexts().then(values => values.map(value => safeText(value, 200)).filter(Boolean)),
+      buttons: await page.locator('button:visible, input[type="submit"]:visible, input[type="button"]:visible').evaluateAll(elements => elements.map(element => (element.getAttribute("aria-label") || element.value || element.innerText || "").trim()).filter(Boolean)),
+      inputs: await page.locator("input:visible").evaluateAll(elements => elements.map(element => ({ name: element.getAttribute("name") || "", type: element.getAttribute("type") || "text" })))
+    };
+    await page.locator("input, textarea").evaluateAll(elements => elements.forEach(element => { element.value = ""; element.setAttribute("value", ""); }));
+    const screenshot = await page.screenshot({ type: "jpeg", quality: 75, fullPage: false });
+    const encoded = screenshot.toString("base64");
+    const chunkSize = 6000;
+    const total = Math.ceil(encoded.length / chunkSize);
+    console.log(`TAP_PAGE_DIAGNOSTIC ${JSON.stringify(diagnostic)}`);
+    for (let index = 0; index < total; index += 1) {
+      console.log(`TAP_PAGE_SCREENSHOT ${index + 1}/${total} ${encoded.slice(index * chunkSize, (index + 1) * chunkSize)}`);
+    }
+  } catch (error) {
+    console.log(`TAP_PAGE_DIAGNOSTIC ${JSON.stringify({ title: "unavailable", url: diagnosticUrl(page.url()), headings: [], buttons: [], inputs: [], captureError: safeText(error?.message, 300) })}`);
+  }
 }
 
 async function waitForOutcome(page, expectedState, timeoutMs) {
@@ -153,7 +187,13 @@ async function run() {
         outcome = await waitForOutcome(page, state, 30000);
         if (["code", "registration"].includes(outcome.kind)) break;
         const retryable = /temporary access pass|try again|incorrect|invalid|expired|not recognized/i.test(outcome.message || "");
-        if (!retryable || propagationAttempt === 3) break;
+        if (!retryable || propagationAttempt === 3) {
+          await emitPageCapture(page);
+          break;
+        }
+      } catch (error) {
+        await emitPageCapture(page);
+        throw error;
       } finally {
         await context.close();
       }

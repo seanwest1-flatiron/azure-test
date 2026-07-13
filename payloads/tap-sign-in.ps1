@@ -8,7 +8,9 @@ param(
     [Parameter(Mandatory)]
     [string] $SubscriptionId,
     [Parameter(Mandatory)]
-    [string] $ResourceGroup
+    [string] $ResourceGroup,
+    [Parameter()]
+    [switch] $CaptureBrowserPage
 )
 
 $ErrorActionPreference = 'Stop'
@@ -150,6 +152,15 @@ try {
     $temporaryAccessPass = [string]$tap.temporaryAccessPass
     if ([string]::IsNullOrWhiteSpace($tapId) -or [string]::IsNullOrWhiteSpace($temporaryAccessPass)) { throw 'Microsoft Graph did not return a usable one-time Temporary Access Pass.' }
 
+    $workerEnvironmentVariables = @(
+        @{ name = 'TENANT_ID'; value = $tenantId },
+        @{ name = 'TENANT_DOMAIN'; value = $TenantDomain },
+        @{ name = 'CLIENT_ID'; value = $clientId },
+        @{ name = 'USER_ALIAS'; value = $alias },
+        @{ name = 'TEMPORARY_ACCESS_PASS'; secureValue = $temporaryAccessPass }
+    )
+    if ($CaptureBrowserPage) { $workerEnvironmentVariables += @{ name = 'CAPTURE_PAGE_ON_FAILURE'; value = '1' } }
+
     $containerGroup = @{
         location = $resourceGroupDetails.location
         properties = @{
@@ -161,13 +172,7 @@ try {
                     image = 'mcr.microsoft.com/playwright:v1.61.0-noble'
                     command = @('/bin/sh', '-c', $command)
                     resources = @{ requests = @{ cpu = 1; memoryInGB = 2 } }
-                    environmentVariables = @(
-                        @{ name = 'TENANT_ID'; value = $tenantId },
-                        @{ name = 'TENANT_DOMAIN'; value = $TenantDomain },
-                        @{ name = 'CLIENT_ID'; value = $clientId },
-                        @{ name = 'USER_ALIAS'; value = $alias },
-                        @{ name = 'TEMPORARY_ACCESS_PASS'; secureValue = $temporaryAccessPass }
-                    )
+                    environmentVariables = $workerEnvironmentVariables
                 }
             })
         }
@@ -186,12 +191,15 @@ try {
     $logs = $null
     for ($attempt = 1; $attempt -le 10; $attempt += 1) {
         try {
-            $logs = Invoke-Arm -Method GET -Path "$containerPath/containers/tap-browser-worker/logs?api-version=2023-05-01&tail=50"
+            $logs = Invoke-Arm -Method GET -Path "$containerPath/containers/tap-browser-worker/logs?api-version=2023-05-01&tail=200"
             break
         } catch {
             if (-not (Test-ContainerGroupDeploymentNotReady -ErrorRecord $_) -or $attempt -eq 10) { throw }
             Start-Sleep -Seconds 3
         }
+    }
+    if ($CaptureBrowserPage) {
+        @(([string]$logs.content -split "`r?`n") | Where-Object { $_ -like 'TAP_PAGE_DIAGNOSTIC *' -or $_ -like 'TAP_PAGE_SCREENSHOT *' }) | Write-Output
     }
     $resultLine = @(([string]$logs.content -split "`r?`n") | Where-Object { $_ -like 'TAP_SIGN_IN_RESULT *' } | Select-Object -Last 1)
     if (-not $resultLine) { throw 'The TAP browser worker did not return a bounded sign-in result.' }

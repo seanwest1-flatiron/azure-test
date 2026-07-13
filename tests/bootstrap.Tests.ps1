@@ -83,6 +83,16 @@ Describe 'After Party bootstrap payload URL' {
         ($output -contains 'TAP worker context: subscription-id/after-test') | Should -Be $true
     }
 
+    It 'forwards the explicit browser page capture switch only to the TAP payload' {
+        Mock Invoke-WebRequest {
+            return [pscustomobject]@{ Content = 'param([string] $GraphAccessToken, [string] $TenantDomain, [string] $SubscriptionId, [string] $ResourceGroup, [switch] $CaptureBrowserPage) "Capture enabled: $CaptureBrowserPage"' }
+        }
+
+        $output = & $bootstrapPath -LabPath 'payloads/tap-sign-in.ps1' -SubscriptionId 'subscription-id' -ResourceGroup 'after-test' -CaptureBrowserPage '1'
+
+        ($output -contains 'Capture enabled: True') | Should -Be $true
+    }
+
     It 'forwards an explicit attempt count to the non-interactive failed sign-in payload' {
         Mock Invoke-WebRequest {
             param($Uri)
