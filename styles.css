@@ -34,6 +34,9 @@ p { color: #c8d0e7; line-height: 1.6; }
 .job-status.queued::before, .job-status.running::before { content: ""; display: inline-block; width: .8rem; height: .8rem; margin-right: .65rem; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; vertical-align: -.05rem; animation: after-party-spin .75s linear infinite; }
 @keyframes after-party-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .job-status.queued::before, .job-status.running::before { animation-duration: 1.8s; } }
+@media (min-width: 621px) {
+  h1 { font-size: clamp(2.3rem, 5.5vw, 4rem); white-space: nowrap; }
+}
 .job-status pre { max-height: 220px; margin: 12px 0 0; overflow: auto; white-space: pre-wrap; word-break: break-word; color: #e5eaff; font: .85rem/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .job-technical-details { margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,.14); }
 .job-technical-details > summary { font-size: .9rem; }

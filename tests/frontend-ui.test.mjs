@@ -75,6 +75,7 @@ test("uses the revised concise header and dismissible account menu", () => {
   assert.match(index, /<title>After Party Labs \(WIP\)<\/title>/);
   assert.match(index, /<h1>After Party Labs \(WIP\)<\/h1>/);
   assert.doesNotMatch(index, /class="eyebrow"|Choose a lab\./);
+  assert.match(styles, /@media \(min-width: 621px\) \{\s*h1 \{ font-size: clamp\(2\.3rem, 5\.5vw, 4rem\); white-space: nowrap; \}/);
   assert.match(app, /document\.addEventListener\("keydown", event => \{[\s\S]*?event\.key !== "Escape"[\s\S]*?el\["account-menu"\]\.open = false[\s\S]*?el\["account-button"\]\.focus\(\)/);
   assert.match(app, /document\.addEventListener\("click", event => \{[\s\S]*?!el\["account-menu"\]\.contains\(event\.target\)[\s\S]*?el\["account-menu"\]\.open = false/);
 });
