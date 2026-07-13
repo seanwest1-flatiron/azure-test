@@ -17,6 +17,8 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 if ($LASTEXITCODE -ne 0) { throw 'Browser worker tests failed.' }
 & node --test (Join-Path $PSScriptRoot 'prerequisite-flow.test.mjs')
 if ($LASTEXITCODE -ne 0) { throw 'JavaScript tests failed.' }
+& node --test (Join-Path $PSScriptRoot 'runner-permissions.test.mjs')
+if ($LASTEXITCODE -ne 0) { throw 'Runner permission tests failed.' }
 & node --test (Join-Path $PSScriptRoot 'frontend-ui.test.mjs')
 if ($LASTEXITCODE -ne 0) { throw 'Frontend tests failed.' }
 & node --test (Join-Path $PSScriptRoot 'runner-version-guard.test.mjs')

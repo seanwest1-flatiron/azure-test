@@ -308,45 +308,6 @@ function Set-PasswordRuleSettings {
     return [pscustomobject]@{ LockoutThreshold = $verifiedValues.LockoutThreshold; LockoutDurationInSeconds = $verifiedValues.LockoutDurationInSeconds }
 }
 
-function Set-LisaFailedSignInDetection {
-    param($Definition, [string] $UserPrincipalName, [string] $ApplicationId)
-    if ([string]::IsNullOrWhiteSpace([string]$Definition.id) -or [string]::IsNullOrWhiteSpace($UserPrincipalName) -or [string]::IsNullOrWhiteSpace($ApplicationId)) {
-        throw 'The tenant baseline does not contain valid Lisa failed-sign-in detection configuration.'
-    }
-    $query = @"
-EntraIdSignInEvents
-| where Timestamp > ago($([int]$Definition.windowMinutes)m)
-| where AccountUpn =~ '$($UserPrincipalName -replace "'", "''")'
-| where ApplicationId == '$($ApplicationId -replace "'", "''")'
-| where ErrorCode == 50126
-| summarize arg_max(Timestamp, ReportId), FailureCount = count(), CorrelationIds = make_set(CorrelationId, $([int]$Definition.threshold)) by AccountUpn, ApplicationId
-| where FailureCount >= $([int]$Definition.threshold)
-| project Timestamp, ReportId, AccountUpn, ApplicationId, FailureCount, CorrelationIds
-"@.Trim()
-    $rule = @{
-        '@odata.type' = '#microsoft.graph.security.detectionRule'
-        id = [string]$Definition.id
-        displayName = [string]$Definition.displayName
-        description = [string]$Definition.description
-        status = 'disabled'
-        queryCondition = @{ queryText = $query }
-        schedule = @{ frequency = [string]$Definition.frequency }
-        detectionAction = @{ alertTemplate = @{ title = [string]$Definition.displayName; description = [string]$Definition.description; severity = [string]$Definition.severity; category = [string]$Definition.category; recommendedActions = 'Review the related sign-in activity.' } }
-    }
-    $path = "/security/rules/detectionRules/$([Uri]::EscapeDataString([string]$Definition.id))"
-    try {
-        Invoke-Graph -Method GET -Path $path -ApiVersion beta | Out-Null
-        Invoke-Graph -Method PATCH -Path $path -Body $rule -ApiVersion beta | Out-Null
-    } catch {
-        if ((Get-GraphStatusCode -ErrorRecord $_) -ne 404) { throw }
-        Invoke-Graph -Method POST -Path '/security/rules/detectionRules' -Body $rule -ApiVersion beta | Out-Null
-    }
-    $verified = Invoke-Graph -Method GET -Path $path -ApiVersion beta
-    if ($verified.status -ne 'disabled') { throw "Custom detection '$($Definition.id)' was not left disabled." }
-    if ($verified.queryCondition.queryText -ne $query) { throw "Custom detection '$($Definition.id)' query verification failed." }
-    return [pscustomobject]@{ Id = $Definition.id; Status = $verified.status }
-}
-
 $licenses = @((Resolve-License -License $seed.licenses.businessPremium))
 $applyPasswordRuleSettings = $false
 if ($applyPasswordRuleSettings) { $passwordRules = Set-PasswordRuleSettings -Definition $seed.passwordRuleSettings }
@@ -402,12 +363,5 @@ foreach ($department in $seed.departments) {
     $departmentMembershipsVerified += $membership.Verified
 }
 
-$customDetection = $null
-if ($seed.customDetections.lisaFailedSignIns) {
-    $failedSignInUpn = Get-UserPrincipalName -UserAlias ([string]$seed.failedSignInLab.userAlias)
-    $customDetection = Set-LisaFailedSignInDetection -Definition $seed.customDetections.lisaFailedSignIns -UserPrincipalName $failedSignInUpn -ApplicationId ([string]$failedSignInApplication.appId)
-}
-
-$detectionSummary = if ($customDetection) { " Custom detection: $($customDetection.Id) is $($customDetection.Status) (alert-only)." } else { '' }
 $applicationSummary = if ($failedSignInApplication) { " Failed sign-in application: $($seed.failedSignInLab.applicationDisplayName) configured." } else { '' }
-Write-Output "Tenant preparation complete for $TenantDomain. Users: $($seed.users.Count) configured ($created created, $reused repaired). Licensing: $($seed.licensingGroup.displayName) with $($licensingMembership.Verified)/$($seed.users.Count) baseline members and $($licenses.Count) license SKU(s). Departments: $($seed.departments.Count) Microsoft 365 groups ($departmentGroupsCreated created, $departmentGroupsRepaired repaired) with $departmentMembershipsVerified configured memberships ($departmentMembershipsAdded added).$applicationSummary$detectionSummary"
+Write-Output "Tenant preparation complete for $TenantDomain. Users: $($seed.users.Count) configured ($created created, $reused repaired). Licensing: $($seed.licensingGroup.displayName) with $($licensingMembership.Verified)/$($seed.users.Count) baseline members and $($licenses.Count) license SKU(s). Departments: $($seed.departments.Count) Microsoft 365 groups ($departmentGroupsCreated created, $departmentGroupsRepaired repaired) with $departmentMembershipsVerified configured memberships ($departmentMembershipsAdded added).$applicationSummary"

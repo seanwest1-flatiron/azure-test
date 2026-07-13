@@ -15,6 +15,7 @@ function dependencies(overrides = {}) {
     restoreEnvironment: async () => {},
     discoverRunner: async () => ready,
     installRunner: async () => ready,
+    reconcilePermissions: async (selectedLab, runner) => runner,
     prepareBaseline: async (selectedLab, runner) => ({ ...runner, tenantBaselineVersion: "baseline-2" }),
     startLab: async () => {},
     runnerVersion: () => "runner-2",
@@ -92,16 +93,32 @@ test("prepares a stale tenant baseline before starting the lab", async () => {
 
 test("uses the ready-environment fast path", async () => {
   let installs = 0;
+  let reconciliations = 0;
   let preparations = 0;
   let starts = 0;
   const flow = createPrerequisiteFlow(dependencies({
     installRunner: async () => { installs += 1; },
+    reconcilePermissions: async (selectedLab, runner) => { reconciliations += 1; return runner; },
     prepareBaseline: async () => { preparations += 1; },
     startLab: async () => { starts += 1; }
   }));
 
   await flow.start(lab);
-  assert.deepEqual({ installs, preparations, starts }, { installs: 0, preparations: 0, starts: 1 });
+  assert.deepEqual({ installs, reconciliations, preparations, starts }, { installs: 0, reconciliations: 1, preparations: 0, starts: 1 });
+});
+
+test("reconciles managed-identity roles for an existing current runner", async () => {
+  let reconciliations = 0;
+  let starts = 0;
+  const flow = createPrerequisiteFlow(dependencies({
+    discoverRunner: async () => ({ runnerVersion: "runner-2", tenantBaselineVersion: "baseline-2" }),
+    reconcilePermissions: async (selectedLab, runner) => { reconciliations += 1; return { ...runner, permissionsVerified: true }; },
+    startLab: async (selectedLab, runner) => { assert.equal(runner.permissionsVerified, true); starts += 1; }
+  }));
+
+  await flow.start(lab);
+  assert.equal(reconciliations, 1);
+  assert.equal(starts, 1);
 });
 
 test("does not start a duplicate lab while prerequisites are active", async () => {

@@ -13,7 +13,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$installedRunnerVersion = '2026.07.13.3'
+$installedRunnerVersion = '2026.07.13.4'
 $repositoryBase = 'https://raw.githubusercontent.com/seanwest1-flatiron/azure-test/main'
 $manifest = Invoke-RestMethod -Method GET -Uri "$repositoryBase/version.json?nonce=$([Guid]::NewGuid().ToString('N'))"
 if ([string]::IsNullOrWhiteSpace([string]$manifest.payloadVersion)) {
@@ -34,22 +34,68 @@ if ([string]::IsNullOrWhiteSpace($labSource)) {
     throw 'The downloaded payload was empty.'
 }
 
-$tokenResponse = Invoke-RestMethod `
-    -Method GET `
-    -Uri ("{0}?resource={1}&api-version=2019-08-01" -f $env:IDENTITY_ENDPOINT, [Uri]::EscapeDataString('https://graph.microsoft.com')) `
-    -Headers @{
-        'X-IDENTITY-HEADER' = $env:IDENTITY_HEADER
-        Metadata = 'True'
+function Get-AccessTokenRoles {
+    param([string] $AccessToken)
+    $segments = $AccessToken.Split('.')
+    if ($segments.Count -lt 2) { throw 'The managed identity Graph access token was not a valid JWT.' }
+    $encodedPayload = $segments[1].Replace('-', '+').Replace('_', '/')
+    switch ($encodedPayload.Length % 4) {
+        2 { $encodedPayload += '==' }
+        3 { $encodedPayload += '=' }
     }
+    try {
+        $payload = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($encodedPayload)) | ConvertFrom-Json
+    } catch {
+        throw 'The managed identity Graph access token payload could not be decoded.'
+    }
+    return @($payload.roles | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Sort-Object -Unique)
+}
 
-if ([string]::IsNullOrWhiteSpace($tokenResponse.access_token)) {
-    throw 'Azure managed identity endpoint did not return a Graph access token.'
+$requiredGraphRoles = @('Domain.Read.All')
+switch ($LabPath) {
+    'payloads/seed-tenant.ps1' {
+        $requiredGraphRoles += @('Application.ReadWrite.All', 'User.ReadWrite.All', 'Group.ReadWrite.All', 'GroupMember.ReadWrite.All', 'LicenseAssignment.Read.All', 'LicenseAssignment.ReadWrite.All')
+    }
+    'payloads/failed-sign-in.ps1' { $requiredGraphRoles += 'Application.ReadWrite.All' }
+    'payloads/browser-failed-sign-in.ps1' { $requiredGraphRoles += 'Application.ReadWrite.All' }
+    'payloads/create-failed-sign-in-detection.ps1' { $requiredGraphRoles += @('Application.ReadWrite.All', 'CustomDetection.ReadWrite.All') }
+    'payloads/share-onedrive-file.ps1' { $requiredGraphRoles += 'Files.ReadWrite.All' }
+    'payloads/send-email.ps1' { $requiredGraphRoles += 'Mail.Send' }
+    'payloads/send-message-batch.ps1' { $requiredGraphRoles += 'Mail.Send' }
+    'payloads/send-customer-payment-export.ps1' { $requiredGraphRoles += 'Mail.Send' }
+    'payloads/send-external-email.ps1' { $requiredGraphRoles += 'Mail.Send' }
+}
+$requiredGraphRoles = @($requiredGraphRoles | Sort-Object -Unique)
+
+$graphAccessToken = $null
+for ($attempt = 1; $attempt -le 13; $attempt += 1) {
+    $tokenResponse = Invoke-RestMethod `
+        -Method GET `
+        -Uri ("{0}?resource={1}&api-version=2019-08-01" -f $env:IDENTITY_ENDPOINT, [Uri]::EscapeDataString('https://graph.microsoft.com')) `
+        -Headers @{
+            'X-IDENTITY-HEADER' = $env:IDENTITY_HEADER
+            Metadata = 'True'
+        }
+    if ([string]::IsNullOrWhiteSpace([string]$tokenResponse.access_token)) {
+        throw 'Azure managed identity endpoint did not return a Graph access token.'
+    }
+    $tokenRoles = @(Get-AccessTokenRoles -AccessToken ([string]$tokenResponse.access_token))
+    $missingRoles = @($requiredGraphRoles | Where-Object { $tokenRoles -notcontains $_ })
+    if (-not $missingRoles.Count) {
+        $graphAccessToken = [string]$tokenResponse.access_token
+        break
+    }
+    if ($attempt -eq 13) {
+        throw "The managed identity Graph token did not contain required roles after 60 seconds: $($missingRoles -join ', ')."
+    }
+    Write-Output "Waiting for managed identity Graph token propagation. Missing roles: $($missingRoles -join ', ')."
+    Start-Sleep -Seconds 5
 }
 
 $domainResponse = Invoke-RestMethod `
     -Method GET `
     -Uri 'https://graph.microsoft.com/v1.0/domains?$select=id,isDefault,isInitial,isVerified' `
-    -Headers @{ Authorization = "Bearer $($tokenResponse.access_token)" }
+    -Headers @{ Authorization = "Bearer $graphAccessToken" }
 $verifiedDomains = @($domainResponse.value | Where-Object { $_.isVerified })
 $resolvedDomain = @($verifiedDomains | Where-Object { $_.isInitial } | Sort-Object id | Select-Object -First 1)
 if (-not $resolvedDomain) { $resolvedDomain = @($verifiedDomains | Where-Object { $_.isDefault } | Sort-Object id | Select-Object -First 1) }
@@ -61,7 +107,7 @@ if ([string]::IsNullOrWhiteSpace($tenantDomain) -or [Uri]::CheckHostName($tenant
 Write-Output "Resolved tenant domain: $tenantDomain"
 
 $payload = [ScriptBlock]::Create($labSource)
-$payloadParameters = @{ GraphAccessToken = $tokenResponse.access_token; TenantDomain = $tenantDomain }
+$payloadParameters = @{ GraphAccessToken = $graphAccessToken; TenantDomain = $tenantDomain }
 if ($LabPath -eq 'payloads/browser-failed-sign-in.ps1') {
     if ([string]::IsNullOrWhiteSpace($SubscriptionId) -or [string]::IsNullOrWhiteSpace($ResourceGroup)) {
         throw 'The browser failed sign-in payload requires the selected Azure subscription and resource group.'

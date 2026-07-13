@@ -38,6 +38,8 @@
           dependencies.progress(runner ? "Updating environment…" : "Creating environment…");
           runner = await dependencies.installRunner(lab, runner);
         }
+        dependencies.progress("Checking runner permissions…");
+        runner = await retrySafe(() => dependencies.reconcilePermissions(lab, runner), dependencies.retryOptions);
         if (runner.tenantBaselineVersion !== dependencies.tenantBaselineVersion()) {
           dependencies.progress("Preparing tenant…");
           runner = await dependencies.prepareBaseline(lab, runner);

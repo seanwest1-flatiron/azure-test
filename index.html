@@ -93,14 +93,21 @@
     </section>
 
     <section class="card">
-      <div class="section-heading"><div><span class="step">8</span><h2>Three browser failed sign-ins</h2></div></div>
+      <div class="section-heading"><div><span class="step">8</span><h2>Create failed sign-in detection</h2></div></div>
+      <p>Creates or repairs an enabled alert for repeated invalid-password sign-ins by Lisa Simpson.</p>
+      <button id="run-failed-sign-in-detection" type="button" disabled>Create detection</button>
+      <div id="failed-sign-in-detection-job-status" class="job-status" role="status" aria-live="polite" hidden></div>
+    </section>
+
+    <section class="card">
+      <div class="section-heading"><div><span class="step">9</span><h2>Three browser failed sign-ins</h2></div></div>
       <p>Uses one short-lived browser worker to submit three sequential incorrect-password sign-ins for Lisa Simpson.</p>
       <button id="run-browser-failed-sign-in-three" type="button" disabled>Record three browser failed sign-ins</button>
       <div id="browser-failed-sign-in-three-job-status" class="job-status" role="status" aria-live="polite" hidden></div>
     </section>
 
     <section class="card">
-      <div class="section-heading"><div><span class="step">9</span><h2>Browser failed sign-in</h2></div></div>
+      <div class="section-heading"><div><span class="step">10</span><h2>Browser failed sign-in</h2></div></div>
       <p>Uses one short-lived browser worker to submit one incorrect-password sign-in for Lisa Simpson and return the Entra result.</p>
       <button id="run-browser-failed-sign-in" type="button" disabled>Record browser failed sign-in</button>
       <div id="browser-failed-sign-in-job-status" class="job-status" role="status" aria-live="polite" hidden></div>
@@ -164,6 +171,7 @@
         await addScript(`config.js?v=${version}`);
         await addScript(`msal-browser.min.js?v=${version}`);
         await addScript(`automation-client.js?v=${version}`);
+        await addScript(`runner-permissions.js?v=${version}`);
         await addScript(`prerequisite-flow.js?v=${version}`);
         await addScript(`app.js?v=${version}`);
       })().catch(showLoaderError);

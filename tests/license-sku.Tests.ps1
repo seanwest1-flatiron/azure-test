@@ -8,7 +8,6 @@ Describe 'Tenant seed license SKU matching' {
 
     BeforeEach {
         $global:AfterPartyGraphFailure = $false
-        $global:AfterPartyDetectionRule = $null
         $global:AfterPartyApplications = @()
         $global:AfterPartyServicePrincipals = @()
         $global:AfterPartyTestSeed = [pscustomobject]@{
@@ -21,7 +20,6 @@ Describe 'Tenant seed license SKU matching' {
             licensingGroup = [pscustomobject]@{ displayName = 'All Employees'; legacyDisplayNames = @(); mailNickname = 'all-employees' }
             passwordRuleSettings = [pscustomobject]@{ templateId = '5cf42378-d67d-4f36-ba46-e8b86229381d'; values = [pscustomobject]@{ LockoutThreshold = '50'; LockoutDurationInSeconds = '60' } }
             failedSignInLab = $null
-            customDetections = $null
             departments = @()
             users = @()
         }
@@ -74,22 +72,6 @@ Describe 'Tenant seed license SKU matching' {
             if ($Uri -eq 'https://graph.microsoft.com/v1.0/servicePrincipals' -and $Method -eq 'POST') {
                 $global:AfterPartyServicePrincipals = @([pscustomobject]@{ id = 'failed-sp-id'; appId = 'dedicated-app-id' })
                 return $global:AfterPartyServicePrincipals[0]
-            }
-            if ($Uri -eq 'https://graph.microsoft.com/beta/security/rules/detectionRules/after-party-lisa-aadsts50126-three-in-one-hour') {
-                if ($Method -eq 'GET' -and $null -ne $global:AfterPartyDetectionRule) { return $global:AfterPartyDetectionRule }
-                if ($Method -eq 'GET') {
-                    $exception = [System.Exception]::new('404 Not Found')
-                    $exception.Data['StatusCode'] = 404
-                    throw $exception
-                }
-                if ($Method -eq 'PATCH') {
-                    $global:AfterPartyDetectionRule = $Body | ConvertFrom-Json
-                    return [pscustomobject]@{}
-                }
-            }
-            if ($Uri -eq 'https://graph.microsoft.com/beta/security/rules/detectionRules' -and $Method -eq 'POST') {
-                $global:AfterPartyDetectionRule = $Body | ConvertFrom-Json
-                return $global:AfterPartyDetectionRule
             }
             throw "Unexpected REST request: $Method $Uri"
         }
@@ -158,40 +140,18 @@ Describe 'Tenant seed license SKU matching' {
         Should -Invoke Invoke-RestMethod -Times 0 -ParameterFilter { $Uri -eq 'https://graph.microsoft.com/v1.0/servicePrincipals' -and $Method -eq 'POST' }
     }
 
-    It 'creates the Lisa invalid-password detection disabled with no automated response actions' {
-        $global:AfterPartyTestSeed.customDetections = [pscustomobject]@{
-            lisaFailedSignIns = [pscustomobject]@{
-                id = 'after-party-lisa-aadsts50126-three-in-one-hour'
-                displayName = 'Lisa Simpson repeated invalid-password sign-ins'
-                description = 'Alerts on three AADSTS50126 invalid-password sign-ins for Lisa Simpson through the dedicated After Party sign-in application within one hour.'
-                threshold = 3
-                windowMinutes = 60
-                frequency = 'PT1H'
-                severity = 'medium'
-                category = 'CredentialAccess'
-            }
-        }
+    It 'does not create a custom detection during tenant preparation' {
         $global:AfterPartyTestSeed.failedSignInLab = [pscustomobject]@{ applicationDisplayName = 'After Party Failed Sign-In Generator'; userAlias = 'lisa.simpson' }
 
         $output = & $seedScriptPath -GraphAccessToken $graphAccessToken -TenantDomain 'student.onmicrosoft.com'
 
-        Should -Invoke Invoke-RestMethod -Times 1 -ParameterFilter {
-            $Uri -eq 'https://graph.microsoft.com/beta/security/rules/detectionRules' -and
-            $Method -eq 'POST' -and
-            $Body -match '"status"\s*:\s*"disabled"' -and
-            $Body -match 'EntraIdSignInEvents' -and
-            $Body -match 'ErrorCode == 50126' -and
-            $Body -match 'FailureCount >= 3' -and
-            $Body -match 'lisa\.simpson@student\.onmicrosoft\.com' -and
-            $Body -match 'dedicated-app-id' -and
-            $Body -notmatch 'responseActions'
-        }
         Should -Invoke Invoke-RestMethod -Times 1 -ParameterFilter {
             $Uri -eq 'https://graph.microsoft.com/v1.0/applications' -and $Method -eq 'POST' -and
             $Body -match 'After Party Failed Sign-In Generator' -and
             $Body -match '"isFallbackPublicClient"\s*:\s*true' -and
             $Body -match 'http://localhost'
         }
-        ($output -join "`n") | Should -Match 'Custom detection: after-party-lisa-aadsts50126-three-in-one-hour is disabled \(alert-only\)\.'
+        Should -Invoke Invoke-RestMethod -Times 0 -ParameterFilter { ([string]$Uri) -match '/security/rules/detectionRules' }
+        ($output -join "`n") | Should -Not -Match 'Custom detection'
     }
 }

@@ -3,11 +3,13 @@
 (() => {
   const config = window.AFTER_PARTY_CONFIG;
   const automation = window.AfterPartyAutomation;
+  const runnerPermissions = window.AfterPartyRunnerPermissions;
   const prerequisiteApi = window.AfterPartyPrerequisites;
   const ARM = "https://management.azure.com";
   const GRAPH = "https://graph.microsoft.com/v1.0";
   const GRAPH_APP_ID = "00000003-0000-0000-c000-000000000000";
-  const APPLICATION_ROLES = Object.freeze(["Mail.Send", "Files.ReadWrite.All", "User.ReadWrite.All", "Group.ReadWrite.All", "GroupMember.ReadWrite.All", "LicenseAssignment.Read.All", "LicenseAssignment.ReadWrite.All", "GroupSettings.ReadWrite.All", "AuditLog.Read.All", "CustomDetection.ReadWrite.All", "Domain.Read.All", "Application.ReadWrite.All"]);
+  const CORE_APPLICATION_ROLES = Object.freeze(["Mail.Send", "Files.ReadWrite.All", "User.ReadWrite.All", "Group.ReadWrite.All", "GroupMember.ReadWrite.All", "LicenseAssignment.Read.All", "LicenseAssignment.ReadWrite.All", "GroupSettings.ReadWrite.All", "AuditLog.Read.All", "Domain.Read.All", "Application.ReadWrite.All"]);
+  const LAB_APPLICATION_ROLES = Object.freeze({ failedSignInDetection: Object.freeze(["CustomDetection.ReadWrite.All"]) });
   const ARM_SCOPE = "https://management.azure.com/user_impersonation";
   const GRAPH_SCOPES = ["Application.Read.All", "AppRoleAssignment.ReadWrite.All"];
   const RUNNER_STORAGE_KEY = "afterParty.runner.v2";
@@ -18,7 +20,7 @@
     "configuration-warning", "status", "sign-in", "sign-out", "account-menu", "account-button", "account-name", "account-username", "account-tenant", "account-environment",
     "environment-chooser", "environment-chooser-title", "environment-chooser-message", "environment-cancel", "environment-continue", "subscription-field", "resource-group-field",
     "subscription", "resource-group", "run", "run-file-share", "run-email-triage",
-    "run-customer-payment-export", "run-external-email", "run-failed-sign-in", "run-failed-sign-in-three", "run-browser-failed-sign-in", "run-browser-failed-sign-in-three", "email-job-status", "file-share-job-status", "message-batch-job-status", "payment-export-job-status", "external-email-job-status", "failed-sign-in-job-status", "failed-sign-in-three-job-status", "browser-failed-sign-in-job-status", "browser-failed-sign-in-three-job-status", "diagnostics"
+    "run-customer-payment-export", "run-external-email", "run-failed-sign-in", "run-failed-sign-in-three", "run-failed-sign-in-detection", "run-browser-failed-sign-in", "run-browser-failed-sign-in-three", "email-job-status", "file-share-job-status", "message-batch-job-status", "payment-export-job-status", "external-email-job-status", "failed-sign-in-job-status", "failed-sign-in-three-job-status", "failed-sign-in-detection-job-status", "browser-failed-sign-in-job-status", "browser-failed-sign-in-three-job-status", "diagnostics"
   ].map(id => [id, document.getElementById(id)]));
   let msalClient;
   let account;
@@ -38,6 +40,7 @@
     sendExternalEmail: { operation: "sendExternalEmail", payloadPath: "payloads/send-external-email.ps1", label: "External email", statusId: "external-email-job-status" },
     failedSignIn: { operation: "failedSignIn", payloadPath: "payloads/failed-sign-in.ps1", label: "Failed sign-in", statusId: "failed-sign-in-job-status" },
     failedSignInThree: { operation: "failedSignInThree", payloadPath: "payloads/failed-sign-in.ps1", label: "Three non-interactive failed sign-ins", statusId: "failed-sign-in-three-job-status", parameters: Object.freeze({ AttemptCount: "3" }) },
+    failedSignInDetection: { operation: "failedSignInDetection", payloadPath: "payloads/create-failed-sign-in-detection.ps1", label: "Create failed sign-in detection", statusId: "failed-sign-in-detection-job-status" },
     browserFailedSignIn: { operation: "browserFailedSignIn", payloadPath: "payloads/browser-failed-sign-in.ps1", label: "Browser failed sign-in", statusId: "browser-failed-sign-in-job-status" },
     browserFailedSignInThree: { operation: "browserFailedSignInThree", payloadPath: "payloads/browser-failed-sign-in.ps1", label: "Three browser failed sign-ins", statusId: "browser-failed-sign-in-three-job-status", parameters: { AttemptCount: "3" } }
   });
@@ -75,9 +78,14 @@
     element.className = `job-status ${kind}`.trim();
     element.replaceChildren(document.createTextNode(message));
     if (output) {
+      const details = document.createElement("details");
+      details.className = "job-technical-details";
+      const summary = document.createElement("summary");
+      summary.textContent = "Technical details";
       const pre = document.createElement("pre");
       pre.textContent = output.length > 4000 ? `${output.slice(-4000)}\n…output truncated` : output;
-      element.append(pre);
+      details.append(summary, pre);
+      element.append(details);
     }
   }
 
@@ -186,6 +194,7 @@
       sendExternalEmail: el["run-external-email"],
       failedSignIn: el["run-failed-sign-in"],
       failedSignInThree: el["run-failed-sign-in-three"],
+      failedSignInDetection: el["run-failed-sign-in-detection"],
       browserFailedSignIn: el["run-browser-failed-sign-in"],
       browserFailedSignInThree: el["run-browser-failed-sign-in-three"]
     }).forEach(([operation, button]) => {
@@ -369,44 +378,29 @@
     throw new Error("Timed out waiting for the Azure deployment.");
   }
 
-  async function grantApplicationPermissions(principalId) {
+  function applicationRolesForOperation(operation) {
+    return [...new Set([...CORE_APPLICATION_ROLES, ...(LAB_APPLICATION_ROLES[operation] || [])])];
+  }
+
+  async function grantApplicationPermissions(principalId, operation, requiredRoleValues = CORE_APPLICATION_ROLES) {
+    if (!runnerPermissions) throw new Error("runner-permissions.js is missing or did not load.");
     setStatus("Finding the required Microsoft Graph application roles…");
-    const result = await graph(`/servicePrincipals?$filter=${encodeURIComponent(`appId eq '${GRAPH_APP_ID}'`)}&$select=id,appRoles`);
+    const result = await graph(`/servicePrincipals?$filter=${encodeURIComponent(`appId eq '${GRAPH_APP_ID}'`)}&$select=id,appRoles`, {}, operation);
     const graphPrincipal = result.value?.[0];
     if (!graphPrincipal) throw new Error("Microsoft Graph service principal was not found in this tenant.");
-    const assignments = await getExistingApplicationAssignments(principalId);
-    const existingRoleIds = new Set((assignments.value || [])
-      .filter(assignment => assignment.resourceId?.toLowerCase() === graphPrincipal.id.toLowerCase())
-      .map(assignment => assignment.appRoleId));
-    const requiredRoles = [];
-    for (const roleValue of APPLICATION_ROLES) {
-      const appRole = graphPrincipal.appRoles?.find(role => role.value === roleValue && role.isEnabled && role.allowedMemberTypes?.includes("Application"));
-      if (!appRole) throw new Error(`Microsoft Graph ${roleValue} application role was not found in this tenant.`);
-      requiredRoles.push(appRole);
-      if (existingRoleIds.has(appRole.id)) continue;
-      await grantApplicationRole(graphPrincipal, appRole, principalId);
-    }
-    await verifyApplicationPermissions(principalId, graphPrincipal, requiredRoles);
+    return runnerPermissions.reconcileApplicationRoles({
+      requiredRoleValues,
+      graphPrincipal,
+      getAssignments: () => getExistingApplicationAssignments(principalId, operation),
+      assignRole: appRole => grantApplicationRole(graphPrincipal, appRole, principalId, operation),
+      onWaiting: missing => setStatus(`Waiting for Microsoft Graph to confirm ${missing.length} application role assignment(s)…`)
+    });
   }
 
-  async function verifyApplicationPermissions(principalId, graphPrincipal, requiredRoles) {
-    for (let attempt = 0; attempt < 15; attempt += 1) {
-      const assignments = await getExistingApplicationAssignments(principalId);
-      const assignedRoleIds = new Set((assignments.value || [])
-        .filter(assignment => assignment.resourceId?.toLowerCase() === graphPrincipal.id.toLowerCase())
-        .map(assignment => assignment.appRoleId));
-      const missing = requiredRoles.filter(role => !assignedRoleIds.has(role.id));
-      if (!missing.length) return;
-      if (attempt === 14) throw new Error(`The Automation managed identity is missing required Microsoft Graph application roles: ${missing.map(role => role.value).join(", ")}.`);
-      setStatus(`Waiting for Microsoft Graph to confirm ${missing.length} application role assignment(s)…`);
-      await new Promise(resolve => setTimeout(resolve, 2000));
-    }
-  }
-
-  async function getExistingApplicationAssignments(principalId) {
+  async function getExistingApplicationAssignments(principalId, operation) {
     for (let attempt = 0; attempt < 30; attempt += 1) {
       try {
-        return await graph(`/servicePrincipals/${principalId}/appRoleAssignments?$select=appRoleId,resourceId`);
+        return await graph(`/servicePrincipals/${principalId}/appRoleAssignments?$select=appRoleId,resourceId`, {}, operation);
       } catch (error) {
         const identityNotReady = error.status === 404 && /(principal|service principal|not found)/i.test(explainError(error));
         if (!identityNotReady || attempt === 29) throw error;
@@ -416,11 +410,11 @@
     }
   }
 
-  async function grantApplicationRole(graphPrincipal, appRole, principalId) {
+  async function grantApplicationRole(graphPrincipal, appRole, principalId, operation) {
     setStatus(`Granting ${appRole.value} to the Automation managed identity…`);
     for (let attempt = 0; attempt < 30; attempt += 1) {
       try {
-        await graph(`/servicePrincipals/${graphPrincipal.id}/appRoleAssignedTo`, { method: "POST", body: JSON.stringify({ principalId, resourceId: graphPrincipal.id, appRoleId: appRole.id }) });
+        await graph(`/servicePrincipals/${graphPrincipal.id}/appRoleAssignedTo`, { method: "POST", body: JSON.stringify({ principalId, resourceId: graphPrincipal.id, appRoleId: appRole.id }) }, operation);
         return;
       } catch (error) {
         const message = explainError(error);
@@ -456,8 +450,8 @@
       const deployment = await waitForDeployment(deploymentPath);
       const principalId = deployment.properties.outputs?.managedIdentityPrincipalId?.value;
       if (!principalId) throw new Error("Deployment succeeded but did not return the managed identity principal ID.");
-      await grantApplicationPermissions(principalId);
-      const runner = { tenantId: account.tenantId, subscriptionId, resourceGroup, automationAccountName, runbookName: config.runbookName, runnerVersion: buildVersion("runnerVersion"), tenantBaselineVersion: existingRunner?.tenantBaselineVersion || "" };
+      await grantApplicationPermissions(principalId, operation);
+      const runner = { tenantId: account.tenantId, subscriptionId, resourceGroup, automationAccountName, runbookName: config.runbookName, principalId, runnerVersion: buildVersion("runnerVersion"), tenantBaselineVersion: existingRunner?.tenantBaselineVersion || "" };
       storeRunner(runner);
       setEnvironment(`Ready — using the After Party Automation account “${automationAccountName}”.`, "ready");
       setStatus("Environment is ready.", "success");
@@ -465,6 +459,21 @@
     } finally {
       if (manageBusy) setBusy(false);
     }
+  }
+
+  async function reconcileRunnerPermissions(lab, runner) {
+    const accountPath = automation.accountPath(runner.subscriptionId, runner.resourceGroup, runner.automationAccountName);
+    const accountDetails = runner.principalId
+      ? null
+      : await arm(`${accountPath}?api-version=${apiVersions.automation}`, {}, lab.operation);
+    const principalId = runner.principalId || accountDetails?.identity?.principalId;
+    if (!principalId) throw new Error("The Automation account did not expose its managed identity principal ID.");
+    await token(GRAPH_SCOPES, lab.operation);
+    const result = await grantApplicationPermissions(principalId, lab.operation, applicationRolesForOperation(lab.operation));
+    if (result.addedRoles.length) {
+      setStatus(`Assigned ${result.addedRoles.length} missing managed-identity permission${result.addedRoles.length === 1 ? "" : "s"}. Azure Automation will wait briefly for the updated token roles.`);
+    }
+    return { ...runner, principalId };
   }
 
   async function pollJob(jobPath, statusElement, label, jobId, operation) {
@@ -603,7 +612,7 @@
     } catch (error) {
       if (error !== redirecting) {
         clearStatus();
-        setJobStatus(el[lab.statusId], `${lab.label}: prerequisites did not complete.`, "error", explainError(error));
+        setJobStatus(el[lab.statusId], `${lab.label} could not start because its prerequisites did not complete.`, "error", explainError(error));
         if (error && typeof error === "object") error.afterPartyLabReported = true;
       }
       throw error;
@@ -660,6 +669,7 @@
       restoreEnvironment: restoreOrSelectEnvironment,
       discoverRunner: lab => discoverRunner(lab.operation),
       installRunner: (lab, runner) => installRunner(lab.operation, runner, false),
+      reconcilePermissions: reconcileRunnerPermissions,
       prepareBaseline: prepareTenantBaseline,
       startLab: lab => runOperation(lab.payloadPath, lab.operation, lab.label, el[lab.statusId], lab.parameters || {}),
       runnerVersion: () => buildVersion("runnerVersion"),
@@ -725,6 +735,7 @@
   bind("run-external-email", "click", () => handleAction(() => beginLab("sendExternalEmail")));
   bind("run-failed-sign-in", "click", () => handleAction(() => beginLab("failedSignIn")));
   bind("run-failed-sign-in-three", "click", () => handleAction(() => beginLab("failedSignInThree")));
+  bind("run-failed-sign-in-detection", "click", () => handleAction(() => beginLab("failedSignInDetection")));
   bind("run-browser-failed-sign-in", "click", () => handleAction(() => beginLab("browserFailedSignIn")));
   bind("run-browser-failed-sign-in-three", "click", () => handleAction(() => beginLab("browserFailedSignInThree")));
   initialize().catch(error => setStatus(explainError(error), "error"));

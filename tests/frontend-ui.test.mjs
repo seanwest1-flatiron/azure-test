@@ -18,10 +18,22 @@ test("environment updates publish the cache-busted bootstrap runbook", () => {
   assert.match(template, /"publishContentLink": \{[\s\S]*?"uri": "\[parameters\('bootstrapUri'\)\]"/);
 });
 
-test("environment updates grant the custom detection permission to the runner", () => {
+test("keeps delegated admin scopes separate from managed-identity application roles", () => {
+  assert.match(app, /const GRAPH_SCOPES = \["Application\.Read\.All", "AppRoleAssignment\.ReadWrite\.All"\]/);
   assert.match(app, /"CustomDetection\.ReadWrite\.All"/);
   assert.match(app, /"Domain\.Read\.All"/);
   assert.match(app, /"Application\.ReadWrite\.All"/);
+  assert.doesNotMatch(app, /const GRAPH_SCOPES = \[[^\]]*Application\.ReadWrite\.All/);
+  assert.match(app, /LAB_APPLICATION_ROLES = Object\.freeze\(\{ failedSignInDetection: Object\.freeze\(\["CustomDetection\.ReadWrite\.All"\]\) \}\)/);
+  assert.doesNotMatch(app, /CORE_APPLICATION_ROLES = Object\.freeze\(\[[^\]]*CustomDetection\.ReadWrite\.All/);
+});
+
+test("reconciles required managed-identity roles for an existing environment", () => {
+  assert.match(app, /async function reconcileRunnerPermissions\(lab, runner\)/);
+  assert.match(app, /await grantApplicationPermissions\(principalId, lab\.operation, applicationRolesForOperation\(lab\.operation\)\)/);
+  assert.match(app, /reconcilePermissions: reconcileRunnerPermissions/);
+  assert.match(app, /addedRoles\.length/);
+  assert.match(index, /runner-permissions\.js\?v=\$\{version\}/);
 });
 
 test("hides the application until the versioned stylesheet loads and reveals loader failures", () => {
@@ -43,6 +55,10 @@ test("keeps the global status quiet when idle and progress on the selected lab",
   assert.match(app, /setJobStatus\(prerequisiteStatusElement, message, "queued"\)/);
   assert.match(app, /error\.afterPartyLabReported = true/);
   assert.match(app, /!error\?\.afterPartyLabReported/);
+  assert.match(app, /could not start because its prerequisites did not complete/);
+  assert.match(app, /details\.className = "job-technical-details"/);
+  assert.match(app, /summary\.textContent = "Technical details"/);
+  assert.match(styles, /\.job-technical-details/);
 });
 
 test("puts authentication in a responsive account control", () => {
@@ -89,6 +105,7 @@ test("keeps the lab spinner animated while prerequisite stages continue", async 
     restoreEnvironment: async () => {},
     discoverRunner: async () => ({ runnerVersion: "old", tenantBaselineVersion: "old" }),
     installRunner: async () => ({ runnerVersion: "current", tenantBaselineVersion: "old" }),
+    reconcilePermissions: async (lab, runner) => runner,
     prepareBaseline: async (lab, runner) => ({ ...runner, tenantBaselineVersion: "current" }),
     startLab: async () => {},
     runnerVersion: () => "current",
@@ -98,7 +115,7 @@ test("keeps the lab spinner animated while prerequisite stages continue", async 
   });
 
   await flow.start({ operation: "lab", label: "Lab" });
-  assert.deepEqual(progress, ["Checking sign-in…", "Checking authorization…", "Checking environment…", "Updating environment…", "Preparing tenant…", "Starting lab…"]);
+  assert.deepEqual(progress, ["Checking sign-in…", "Checking authorization…", "Checking environment…", "Updating environment…", "Checking runner permissions…", "Preparing tenant…", "Starting lab…"]);
   assert.match(styles, /\.job-status\.queued::before, \.job-status\.running::before[\s\S]*animation: after-party-spin \.75s linear infinite/);
   assert.match(styles, /@keyframes after-party-spin/);
   assert.match(app, /\$\{label\}: \$\{status\.toLowerCase\(\)\}…/);
@@ -118,4 +135,13 @@ test("wires the three non-interactive failed sign-ins card to the existing ROPC 
   assert.match(index, /Submits three incorrect-password sign-ins for Lisa Simpson without using a browser\./);
   assert.match(app, /failedSignInThree: \{[\s\S]*?operation: "failedSignInThree"[\s\S]*?payloadPath: "payloads\/failed-sign-in\.ps1"[\s\S]*?parameters: Object\.freeze\(\{ AttemptCount: "3" \}\)/);
   assert.match(app, /bind\("run-failed-sign-in-three", "click", \(\) => handleAction\(\(\) => beginLab\("failedSignInThree"\)\)\)/);
+});
+
+test("places the dedicated failed sign-in detection lab after the three-attempt non-interactive lab", () => {
+  const threeAttemptCard = index.indexOf("<h2>Three non-interactive failed sign-ins</h2>");
+  const detectionCard = index.indexOf("<h2>Create failed sign-in detection</h2>");
+  const browserCard = index.indexOf("<h2>Three browser failed sign-ins</h2>");
+  assert.ok(threeAttemptCard >= 0 && detectionCard > threeAttemptCard && browserCard > detectionCard);
+  assert.match(app, /failedSignInDetection: \{[^}]*operation: "failedSignInDetection"[^}]*payloadPath: "payloads\/create-failed-sign-in-detection\.ps1"/);
+  assert.match(app, /bind\("run-failed-sign-in-detection", "click", \(\) => handleAction\(\(\) => beginLab\("failedSignInDetection"\)\)\)/);
 });

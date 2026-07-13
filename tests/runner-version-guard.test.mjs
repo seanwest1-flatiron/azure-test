@@ -32,6 +32,20 @@ test("requires a runner version bump for runner configuration changes in the fro
   assert.deepEqual(runnerAffectingFiles({ changedFiles: ["app.js"], changedAppLines: ["setStatus(\"Ready\");"] }), []);
 });
 
+test("treats managed-identity permission reconciliation as runner-affecting", () => {
+  for (const changedLine of [
+    'const CORE_APPLICATION_ROLES = Object.freeze(["Application.ReadWrite.All"]);',
+    "async function reconcileRunnerPermissions(lab, runner) {"
+  ]) {
+    assert.throws(() => validateRunnerVersionChange({
+      changedFiles: ["app.js"],
+      changedAppLines: [changedLine],
+      previousManifest: manifest("runner-1"),
+      currentManifest: manifest("runner-1")
+    }), /app\.js/);
+  }
+});
+
 test("does not require runner changes for payload, baseline, or frontend-only edits", () => {
   for (const file of ["payloads/failed-sign-in.ps1", "payloads/tenant-seed.json", "app.js", "index.html", "styles.css"]) {
     assert.doesNotThrow(() => validateRunnerVersionChange({

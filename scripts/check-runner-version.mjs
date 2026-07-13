@@ -3,10 +3,11 @@ import { readFileSync } from "node:fs";
 
 export const RUNNER_AFFECTING_FILES = Object.freeze([
   "azuredeploy.json",
+  "runner-permissions.js",
   "runbooks/bootstrap.ps1"
 ]);
 
-export const RUNNER_APP_MARKERS = /APPLICATION_ROLES|GRAPH_SCOPES|grantApplicationPermissions|grantApplicationRole|installRunner|bootstrapUri|Microsoft\.Automation|Microsoft\.ContainerInstance/;
+export const RUNNER_APP_MARKERS = /APPLICATION_ROLES|GRAPH_SCOPES|grantApplicationPermissions|grantApplicationRole|reconcileRunnerPermissions|installRunner|bootstrapUri|Microsoft\.Automation|Microsoft\.ContainerInstance/;
 
 export function runnerAffectingFiles({ changedFiles, changedAppLines = [] }) {
   const files = changedFiles.filter(file => RUNNER_AFFECTING_FILES.includes(file));

@@ -1,6 +1,12 @@
 Describe 'After Party bootstrap payload URL' {
     BeforeAll {
         $bootstrapPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'runbooks/bootstrap.ps1'
+        function New-AfterPartyTestToken {
+            param([string[]] $Roles)
+            $payload = @{ roles = $Roles; tid = 'tenant-id' } | ConvertTo-Json -Compress
+            $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($payload)).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+            return "header.$encoded.signature"
+        }
     }
 
     BeforeEach {
@@ -9,13 +15,20 @@ Describe 'After Party bootstrap payload URL' {
             [pscustomobject]@{ id = 'student.example'; isDefault = $true; isInitial = $false; isVerified = $true },
             [pscustomobject]@{ id = 'student.onmicrosoft.com'; isDefault = $false; isInitial = $true; isVerified = $true }
         )
+        $global:AfterPartyTokenRequests = 0
+        $global:AfterPartyTokens = @((New-AfterPartyTestToken -Roles @(
+            'Application.ReadWrite.All', 'CustomDetection.ReadWrite.All', 'Domain.Read.All', 'Files.ReadWrite.All', 'Group.ReadWrite.All',
+            'GroupMember.ReadWrite.All', 'LicenseAssignment.Read.All', 'LicenseAssignment.ReadWrite.All', 'Mail.Send', 'User.ReadWrite.All'
+        )))
         Mock Invoke-RestMethod {
             param($Uri)
             if ($Uri -like '*/version.json?nonce=*') {
                 return [pscustomobject]@{ runnerVersion = '2026.07.12.1'; payloadVersion = '2026.07.12.1' }
             }
             if ($Uri -like '*api-version=2019-08-01') {
-                return [pscustomobject]@{ access_token = 'not-a-real-token' }
+                $index = [Math]::Min($global:AfterPartyTokenRequests, $global:AfterPartyTokens.Count - 1)
+                $global:AfterPartyTokenRequests += 1
+                return [pscustomobject]@{ access_token = $global:AfterPartyTokens[$index] }
             }
             if ($Uri -eq 'https://graph.microsoft.com/v1.0/domains?$select=id,isDefault,isInitial,isVerified') {
                 return [pscustomobject]@{ value = $global:AfterPartyDomains }
@@ -27,6 +40,7 @@ Describe 'After Party bootstrap payload URL' {
             $global:AfterPartyDownloadUri = [string]$Uri
             return [pscustomobject]@{ Content = 'param([string] $GraphAccessToken, [string] $TenantDomain)' }
         }
+        Mock Start-Sleep { }
     }
 
     It 'keeps the lab path before the version query string and logs the full URL' {
@@ -76,5 +90,18 @@ Describe 'After Party bootstrap payload URL' {
 
         ($output -contains 'Resolved tenant domain: student.onmicrosoft.com') | Should -Be $true
         ($output -contains 'Tenant domain: student.onmicrosoft.com') | Should -Be $true
+    }
+
+    It 'waits a bounded number of times for required managed identity roles to reach the token' {
+        $global:AfterPartyTokens = @(
+            (New-AfterPartyTestToken -Roles @('Domain.Read.All')),
+            (New-AfterPartyTestToken -Roles @('Application.ReadWrite.All', 'Domain.Read.All', 'Group.ReadWrite.All', 'GroupMember.ReadWrite.All', 'LicenseAssignment.Read.All', 'LicenseAssignment.ReadWrite.All', 'User.ReadWrite.All'))
+        )
+
+        $output = & $bootstrapPath -LabPath 'payloads/seed-tenant.ps1'
+
+        $global:AfterPartyTokenRequests | Should -Be 2
+        ($output -join "`n") | Should -Match 'Waiting for managed identity Graph token propagation\. Missing roles: .*Application\.ReadWrite\.All'
+        Should -Invoke Start-Sleep -Times 1 -ParameterFilter { $Seconds -eq 5 }
     }
 }
