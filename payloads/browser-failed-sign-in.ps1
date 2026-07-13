@@ -6,7 +6,10 @@ param(
     [Parameter(Mandatory)]
     [string] $SubscriptionId,
     [Parameter(Mandatory)]
-    [string] $ResourceGroup
+    [string] $ResourceGroup,
+    [Parameter()]
+    [ValidateRange(1, 3)]
+    [int] $AttemptCount = 1
 )
 
 $ErrorActionPreference = 'Stop'
@@ -46,6 +49,22 @@ function Invoke-Arm {
     $parameters = @{ Method = $Method; Uri = "https://management.azure.com$Path"; Headers = @{ Authorization = "Bearer $armAccessToken" } }
     if ($PSBoundParameters.ContainsKey('Body')) { $parameters.ContentType = 'application/json'; $parameters.Body = $Body | ConvertTo-Json -Depth 16 }
     Invoke-RestMethod @parameters
+}
+
+function Invoke-GraphVerification {
+    param([string] $UserPrincipalName, [string] $ApplicationId, [string] $OperationStartedUtc)
+    try {
+        $filter = "userPrincipalName eq '$($UserPrincipalName -replace "'", "''")' and appId eq '$ApplicationId' and createdDateTime ge $OperationStartedUtc"
+        for ($attempt = 1; $attempt -le 3; $attempt += 1) {
+            $uri = "https://graph.microsoft.com/v1.0/auditLogs/signIns?`$filter=$([Uri]::EscapeDataString($filter))&`$top=25"
+            $records = @((Invoke-RestMethod -Method GET -Uri $uri -Headers @{ Authorization = "Bearer $GraphAccessToken" }).value | Where-Object { @($_.signInEventTypes) -contains 'interactiveUser' -and [int]$_.status.errorCode -ne 0 })
+            if ($records.Count) { return "partially verified: $($records.Count) interactive failed sign-in record(s) found" }
+            if ($attempt -lt 3) { Start-Sleep -Seconds 10 }
+        }
+        return 'pending: no matching interactive failed sign-in records were available yet'
+    } catch {
+        return "pending: sign-in log verification was unavailable ($($_.Exception.Message))"
+    }
 }
 
 function Test-ContainerGroupDeploymentNotReady {
@@ -89,7 +108,8 @@ $containerGroup = @{
                 resources = @{ requests = @{ cpu = 1; memoryInGB = 2 } }
                 environmentVariables = @(
                     @{ name = 'TENANT_ID'; value = $tenantId },
-                    @{ name = 'BASELINE_URL'; value = $baselineUri }
+                    @{ name = 'BASELINE_URL'; value = $baselineUri },
+                    @{ name = 'ATTEMPT_COUNT'; value = [string]$AttemptCount }
                 )
             }
         })
@@ -97,6 +117,7 @@ $containerGroup = @{
 }
 
 $created = $false
+$operationStartedUtc = [DateTime]::UtcNow.ToString('o')
 try {
     Invoke-Arm -Method PUT -Path "${containerPath}?api-version=2023-05-01" -Body $containerGroup | Out-Null
     $created = $true
@@ -126,8 +147,14 @@ try {
     $resultLine = @($content -split "`r?`n" | Where-Object { $_ -like 'BROWSER_SIGN_IN_RESULT *' } | Select-Object -Last 1)
     if (-not $resultLine) { throw 'The browser worker did not produce a sign-in result.' }
     $result = ($resultLine -replace '^BROWSER_SIGN_IN_RESULT\s+', '') | ConvertFrom-Json
-    if ($result.result -ne 'credentials_rejected') { throw "The browser worker did not confirm credential rejection. Result: $($result.result)" }
-    Write-Output "Browser failed sign-in confirmed for $($result.upn) at $($result.timestampUtc)."
+    if ($AttemptCount -eq 1 -and $result.result -ne 'credentials_rejected') { throw "The browser worker did not confirm credential rejection. Result: $($result.result)" }
+    if ($AttemptCount -eq 3) {
+        if ($result.result -ne 'attempts_submitted' -or @($result.diagnostic.attempts).Count -ne 3) { throw "The browser worker did not submit three confirmed sign-in attempts. Result: $($result.result)" }
+        $verification = Invoke-GraphVerification -UserPrincipalName $result.upn -ApplicationId $baseline.failedSignInLab.clientId -OperationStartedUtc $operationStartedUtc
+        Write-Output "Three browser failed sign-ins submitted for $($result.upn). Worker outbound IP: $($result.diagnostic.workerOutboundIp). Entra verification: $verification."
+    } else {
+        Write-Output "Browser failed sign-in confirmed for $($result.upn) at $($result.timestampUtc)."
+    }
 } finally {
     if ($created) {
         try {

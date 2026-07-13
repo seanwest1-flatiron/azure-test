@@ -12,6 +12,7 @@ Describe 'Browser failed sign-in payload' {
         $global:AfterPartyContainerRequest = $null
         $global:AfterPartyLogRequestCount = 0
         $global:AfterPartyLogsNotReadyOnce = $false
+        $global:AfterPartyBatch = $false
         Mock Invoke-RestMethod {
             param($Uri, $Method, $Body)
             $uriText = [string]$Uri
@@ -31,8 +32,10 @@ Describe 'Browser failed sign-in payload' {
             if ($Method -eq 'GET' -and $uriText -like '*/containers/browser-worker/logs?*') {
                 $global:AfterPartyLogRequestCount += 1
                 if ($global:AfterPartyLogsNotReadyOnce -and $global:AfterPartyLogRequestCount -eq 1) { throw [System.Exception]::new('ContainerGroupDeploymentNotReady') }
+                if ($global:AfterPartyBatch) { return [pscustomobject]@{ content = 'BROWSER_SIGN_IN_RESULT {"upn":"lisa.simpson@corywest.onmicrosoft.com","timestampUtc":"2026-07-12T12:00:00Z","result":"attempts_submitted","diagnostic":{"workerOutboundIp":"203.0.113.10","attempts":[{"number":1},{"number":2},{"number":3}]}}' } }
                 return [pscustomobject]@{ content = 'BROWSER_SIGN_IN_RESULT {"upn":"lisa.simpson@corywest.onmicrosoft.com","timestampUtc":"2026-07-12T12:00:00Z","result":"credentials_rejected","diagnostic":{"message":"Credentials rejected."}}' }
             }
+            if ($uriText -like 'https://graph.microsoft.com/v1.0/auditLogs/signIns?*') { return [pscustomobject]@{ value = @([pscustomobject]@{ signInEventTypes = @('interactiveUser'); status = [pscustomobject]@{ errorCode = 50126 } }) } }
             if ($Method -eq 'GET' -and $uriText -like 'https://management.azure.com/subscriptions/subscription-id/resourcegroups/after-test/providers/Microsoft.ContainerInstance/containerGroups/*') {
                 return [pscustomobject]@{ properties = [pscustomobject]@{ containers = @([pscustomobject]@{ properties = [pscustomobject]@{ instanceView = [pscustomobject]@{ currentState = [pscustomobject]@{ state = 'Terminated' } } } }) } }
             }
@@ -63,5 +66,14 @@ Describe 'Browser failed sign-in payload' {
         Should -Invoke Invoke-RestMethod -Times 1 -ParameterFilter { $Method -eq 'PUT' -and ([string]$Uri) -match 'Microsoft.ContainerInstance/containerGroups' }
         Should -Invoke Invoke-RestMethod -Times 2 -ParameterFilter { $Method -eq 'GET' -and ([string]$Uri) -match '/containers/browser-worker/logs\?' }
         Should -Invoke Invoke-RestMethod -Times 1 -ParameterFilter { $Method -eq 'DELETE' -and ([string]$Uri) -match 'Microsoft.ContainerInstance/containerGroups' }
+    }
+
+    It 'uses one container for three submitted browser sign-ins and treats delayed log verification as best effort' {
+        $global:AfterPartyBatch = $true
+        $output = & $payloadPath -GraphAccessToken $graphAccessToken -SubscriptionId 'subscription-id' -ResourceGroup 'after-test' -AttemptCount 3
+
+        ($output -match 'Three browser failed sign-ins submitted.*Worker outbound IP: 203.0.113.10.*partially verified') | Should -Be $true
+        Should -Invoke Invoke-RestMethod -Times 1 -ParameterFilter { $Method -eq 'PUT' -and ([string]$Uri) -match 'Microsoft.ContainerInstance/containerGroups' }
+        Should -Invoke Invoke-RestMethod -Times 1 -ParameterFilter { ([string]$Uri) -like 'https://graph.microsoft.com/v1.0/auditLogs/signIns?*' }
     }
 }

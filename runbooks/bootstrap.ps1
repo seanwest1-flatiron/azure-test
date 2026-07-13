@@ -7,7 +7,9 @@ param(
     [Parameter()]
     [string] $SubscriptionId,
     [Parameter()]
-    [string] $ResourceGroup
+    [string] $ResourceGroup,
+    [Parameter()]
+    [string] $AttemptCount
 )
 
 $ErrorActionPreference = 'Stop'
@@ -51,5 +53,6 @@ if ($LabPath -eq 'payloads/browser-failed-sign-in.ps1') {
     }
     $payloadParameters.SubscriptionId = $SubscriptionId
     $payloadParameters.ResourceGroup = $ResourceGroup
+    if (-not [string]::IsNullOrWhiteSpace($AttemptCount)) { $payloadParameters.AttemptCount = $AttemptCount }
 }
 & $payload @payloadParameters

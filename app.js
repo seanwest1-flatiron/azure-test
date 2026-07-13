@@ -6,7 +6,7 @@
   const ARM = "https://management.azure.com";
   const GRAPH = "https://graph.microsoft.com/v1.0";
   const GRAPH_APP_ID = "00000003-0000-0000-c000-000000000000";
-  const APPLICATION_ROLES = Object.freeze(["Mail.Send", "Files.ReadWrite.All", "User.ReadWrite.All", "Group.ReadWrite.All", "GroupMember.ReadWrite.All", "LicenseAssignment.Read.All", "LicenseAssignment.ReadWrite.All"]);
+  const APPLICATION_ROLES = Object.freeze(["Mail.Send", "Files.ReadWrite.All", "User.ReadWrite.All", "Group.ReadWrite.All", "GroupMember.ReadWrite.All", "LicenseAssignment.Read.All", "LicenseAssignment.ReadWrite.All", "GroupSettings.ReadWrite.All", "AuditLog.Read.All"]);
   const ARM_SCOPE = "https://management.azure.com/user_impersonation";
   const GRAPH_SCOPES = ["Application.Read.All", "AppRoleAssignment.ReadWrite.All"];
   const RUNNER_STORAGE_KEY = "afterParty.runner.v2";
@@ -16,7 +16,7 @@
   const el = Object.fromEntries([
     "configuration-warning", "status", "sign-in", "sign-out", "account", "authorization", "authorize-azure",
     "subscription", "resource-group", "environment-status", "install", "run", "run-file-share", "run-email-triage",
-    "run-customer-payment-export", "run-external-email", "run-tenant-seed", "run-failed-sign-in", "run-browser-failed-sign-in", "email-job-status", "file-share-job-status", "message-batch-job-status", "payment-export-job-status", "external-email-job-status", "tenant-seed-job-status", "failed-sign-in-job-status", "browser-failed-sign-in-job-status", "diagnostics"
+    "run-customer-payment-export", "run-external-email", "run-tenant-seed", "run-failed-sign-in", "run-browser-failed-sign-in", "run-browser-failed-sign-in-three", "email-job-status", "file-share-job-status", "message-batch-job-status", "payment-export-job-status", "external-email-job-status", "tenant-seed-job-status", "failed-sign-in-job-status", "browser-failed-sign-in-job-status", "browser-failed-sign-in-three-job-status", "diagnostics"
   ].map(id => [id, document.getElementById(id)]));
   let msalClient;
   let account;
@@ -434,7 +434,7 @@
     try {
       await token([ARM_SCOPE], operation);
       const jobId = crypto.randomUUID();
-      const jobParameters = operation === "browserFailedSignIn"
+      const jobParameters = ["browserFailedSignIn", "browserFailedSignInThree"].includes(operation)
         ? { ...parameters, SubscriptionId: runner.subscriptionId, ResourceGroup: runner.resourceGroup }
         : parameters;
       setJobStatus(statusElement, `◐ ${label}: queued… Job ID: ${jobId}`, "queued");
@@ -502,6 +502,9 @@
       case "browserFailedSignIn":
         await runOperation("payloads/browser-failed-sign-in.ps1", "browserFailedSignIn", "Browser failed sign-in", el["browser-failed-sign-in-job-status"]);
         return;
+      case "browserFailedSignInThree":
+        await runOperation("payloads/browser-failed-sign-in.ps1", "browserFailedSignInThree", "Three browser failed sign-ins", el["browser-failed-sign-in-three-job-status"], { AttemptCount: "3" });
+        return;
     }
   }
 
@@ -559,5 +562,6 @@
   bind("run-tenant-seed", "click", () => handleAction(() => runOperation("payloads/seed-tenant.ps1", "seedTenant", "Tenant preparation", el["tenant-seed-job-status"])));
   bind("run-failed-sign-in", "click", () => handleAction(() => runOperation("payloads/failed-sign-in.ps1", "failedSignIn", "Failed sign-in", el["failed-sign-in-job-status"])));
   bind("run-browser-failed-sign-in", "click", () => handleAction(() => runOperation("payloads/browser-failed-sign-in.ps1", "browserFailedSignIn", "Browser failed sign-in", el["browser-failed-sign-in-job-status"])));
+  bind("run-browser-failed-sign-in-three", "click", () => handleAction(() => runOperation("payloads/browser-failed-sign-in.ps1", "browserFailedSignInThree", "Three browser failed sign-ins", el["browser-failed-sign-in-three-job-status"], { AttemptCount: "3" })));
   initialize().catch(error => setStatus(explainError(error), "error"));
 })();

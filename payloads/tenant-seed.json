@@ -58,6 +58,13 @@
     "clientId": "7383ffdd-51f7-4cb2-8f4e-a7793939fdae",
     "userPrincipalName": "lisa.simpson@corywest.onmicrosoft.com"
   },
+  "passwordRuleSettings": {
+    "templateId": "5cf42378-d67d-4f36-ba46-e8b86229381d",
+    "values": {
+      "LockoutThreshold": "100",
+      "LockoutDurationInSeconds": "60"
+    }
+  },
   "users": [
     { "userPrincipalName": "cory@corywest.onmicrosoft.com", "displayName": "Cory West", "givenName": "Cory", "surname": "West", "jobTitle": "Chief Executive Officer", "department": "Executive", "mailNickname": "cory" },
     { "userPrincipalName": "kobe@corywest.onmicrosoft.com", "displayName": "Kobe West", "givenName": "Kobe", "surname": "West", "jobTitle": "Chief Operating Officer", "department": "Executive", "mailNickname": "kobe" },

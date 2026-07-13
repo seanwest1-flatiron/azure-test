@@ -233,7 +233,43 @@ function Confirm-GroupMembership {
     }
 }
 
+function ConvertTo-SettingValues {
+    param($Values)
+    return @($Values | ForEach-Object { @{ name = [string]$_.name; value = [string]$_.value } })
+}
+
+function Set-PasswordRuleSettings {
+    param($Definition)
+    $settings = @((Invoke-Graph -Method GET -Path '/groupSettings').value)
+    $setting = @($settings | Where-Object { [string]$_.templateId -eq [string]$Definition.templateId }) | Select-Object -First 1
+    if ($setting) {
+        $values = @{}
+        foreach ($value in $setting.values) { $values[[string]$value.name] = [string]$value.value }
+    } else {
+        $template = Invoke-Graph -Method GET -Path "/groupSettingTemplates/$([Uri]::EscapeDataString([string]$Definition.templateId))"
+        $values = @{}
+        foreach ($value in $template.values) { $values[[string]$value.name] = [string]$value.defaultValue }
+    }
+    foreach ($name in $Definition.values.psobject.Properties.Name) { $values[$name] = [string]$Definition.values.$name }
+    $completeValues = @($values.Keys | Sort-Object | ForEach-Object { @{ name = $_; value = $values[$_] } })
+    if ($setting) {
+        Invoke-Graph -Method PATCH -Path "/groupSettings/$($setting.id)" -Body @{ values = $completeValues } | Out-Null
+        $settingId = $setting.id
+    } else {
+        $created = Invoke-Graph -Method POST -Path '/groupSettings' -Body @{ templateId = [string]$Definition.templateId; values = $completeValues }
+        $settingId = $created.id
+    }
+    $verified = Invoke-Graph -Method GET -Path "/groupSettings/$settingId"
+    $verifiedValues = @{}
+    foreach ($value in $verified.values) { $verifiedValues[[string]$value.name] = [string]$value.value }
+    foreach ($name in $Definition.values.psobject.Properties.Name) {
+        if ($verifiedValues[$name] -ne [string]$Definition.values.$name) { throw "Password Rule Settings verification failed for $name." }
+    }
+    return [pscustomobject]@{ LockoutThreshold = $verifiedValues.LockoutThreshold; LockoutDurationInSeconds = $verifiedValues.LockoutDurationInSeconds }
+}
+
 $licenses = @((Resolve-License -License $seed.licenses.businessPremium))
+$passwordRules = Set-PasswordRuleSettings -Definition $seed.passwordRuleSettings
 $combinedLicense = Resolve-License -License $seed.licenses.combinedDefenderAndPurview -Optional
 if ($null -ne $combinedLicense) {
     $licenses += $combinedLicense
@@ -283,4 +319,4 @@ foreach ($department in $seed.departments) {
     $departmentMembershipsVerified += $membership.Verified
 }
 
-Write-Output "Tenant preparation complete. Users: $($seed.users.Count) configured ($created created, $reused repaired). Licensing: $($seed.licensingGroup.displayName) with $($licensingMembership.Verified)/$($seed.users.Count) baseline members and $($licenses.Count) license SKU(s). Departments: $($seed.departments.Count) Microsoft 365 groups ($departmentGroupsCreated created, $departmentGroupsRepaired repaired) with $departmentMembershipsVerified configured memberships ($departmentMembershipsAdded added)."
+Write-Output "Tenant preparation complete. Users: $($seed.users.Count) configured ($created created, $reused repaired). Licensing: $($seed.licensingGroup.displayName) with $($licensingMembership.Verified)/$($seed.users.Count) baseline members and $($licenses.Count) license SKU(s). Departments: $($seed.departments.Count) Microsoft 365 groups ($departmentGroupsCreated created, $departmentGroupsRepaired repaired) with $departmentMembershipsVerified configured memberships ($departmentMembershipsAdded added). Password Rule Settings verified: LockoutThreshold=$($passwordRules.LockoutThreshold), LockoutDurationInSeconds=$($passwordRules.LockoutDurationInSeconds)."

@@ -1,7 +1,7 @@
 Describe 'Tenant seed license SKU matching' {
     BeforeAll {
         $seedScriptPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'payloads/seed-tenant.ps1'
-        $tokenPayload = @{ roles = @('LicenseAssignment.Read.All', 'LicenseAssignment.ReadWrite.All') } | ConvertTo-Json -Compress
+        $tokenPayload = @{ roles = @('GroupSettings.ReadWrite.All', 'LicenseAssignment.Read.All', 'LicenseAssignment.ReadWrite.All') } | ConvertTo-Json -Compress
         $encodedPayload = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($tokenPayload)).TrimEnd('=').Replace('+', '-').Replace('/', '_')
         $graphAccessToken = "header.$encodedPayload.signature"
     }
@@ -16,6 +16,7 @@ Describe 'Tenant seed license SKU matching' {
                 purview = [pscustomobject]@{ displayName = 'Microsoft Purview Suite'; skuPartNumberCandidates = @('PURVIEW_SUITE') }
             }
             licensingGroup = [pscustomobject]@{ displayName = 'All Employees'; legacyDisplayNames = @(); mailNickname = 'all-employees' }
+            passwordRuleSettings = [pscustomobject]@{ templateId = '5cf42378-d67d-4f36-ba46-e8b86229381d'; values = [pscustomobject]@{ LockoutThreshold = '100'; LockoutDurationInSeconds = '60' } }
             departments = @()
             users = @()
         }
@@ -41,6 +42,9 @@ Describe 'Tenant seed license SKU matching' {
                     [pscustomobject]@{ skuPartNumber = 'PURVIEW_SUITE'; skuId = 'purview-id' }
                 ) }
             }
+            if ($Uri -eq 'https://graph.microsoft.com/v1.0/groupSettings') { return [pscustomobject]@{ value = @([pscustomobject]@{ id = 'password-rule-id'; templateId = '5cf42378-d67d-4f36-ba46-e8b86229381d'; values = @([pscustomobject]@{ name = 'LockoutThreshold'; value = '10' }, [pscustomobject]@{ name = 'LockoutDurationInSeconds'; value = '30' }, [pscustomobject]@{ name = 'UnrelatedSetting'; value = 'preserve-me' }) }) } }
+            if ($Uri -eq 'https://graph.microsoft.com/v1.0/groupSettings/password-rule-id' -and $Method -eq 'PATCH') { return [pscustomobject]@{} }
+            if ($Uri -eq 'https://graph.microsoft.com/v1.0/groupSettings/password-rule-id' -and $Method -eq 'GET') { return [pscustomobject]@{ values = @([pscustomobject]@{ name = 'LockoutThreshold'; value = '100' }, [pscustomobject]@{ name = 'LockoutDurationInSeconds'; value = '60' }, [pscustomobject]@{ name = 'UnrelatedSetting'; value = 'preserve-me' }) } }
             if (([Uri]$Uri).AbsolutePath -eq '/v1.0/groups') {
                 return [pscustomobject]@{ value = @([pscustomobject]@{ id = 'group-id'; displayName = 'All Employees'; mailNickname = 'all-employees'; groupTypes = @(); assignedLicenses = @() }) }
             }
@@ -67,8 +71,18 @@ Describe 'Tenant seed license SKU matching' {
             $Body -match 'combined-suite-id' -and
             $Body -notmatch 'defender-id|purview-id'
         }
-        ($output -contains 'Managed identity Graph roles: LicenseAssignment.Read.All, LicenseAssignment.ReadWrite.All') | Should -Be $true
+        ($output -match 'Managed identity Graph roles: .*GroupSettings.ReadWrite.All.*LicenseAssignment.Read.All.*LicenseAssignment.ReadWrite.All') | Should -Be $true
         ($output -contains 'Using combined Defender and Purview license SKU.') | Should -Be $true
+    }
+
+    It 'preserves unrelated Password Rule Settings values and verifies the lab lockout baseline' {
+        $output = & $seedScriptPath -GraphAccessToken $graphAccessToken
+
+        Should -Invoke Invoke-RestMethod -Times 1 -ParameterFilter {
+            $Uri -eq 'https://graph.microsoft.com/v1.0/groupSettings/password-rule-id' -and $Method -eq 'PATCH' -and
+            $Body -match 'LockoutThreshold' -and $Body -match '"100"' -and $Body -match 'LockoutDurationInSeconds' -and $Body -match '"60"' -and $Body -match 'UnrelatedSetting' -and $Body -match 'preserve-me'
+        }
+        ($output -match 'Password Rule Settings verified: LockoutThreshold=100, LockoutDurationInSeconds=60') | Should -Be $true
     }
 
     It 'reports the method, endpoint, status, Graph code, and Graph message' {
