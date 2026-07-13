@@ -15,7 +15,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$installedRunnerVersion = '2026.07.13.8'
+$installedRunnerVersion = '2026.07.13.9'
 $deployment = Invoke-RestMethod -Method GET -Uri "https://seanwest1-flatiron.github.io/azure-test/deployment.json?nonce=$([Guid]::NewGuid().ToString('N'))" -Headers @{ 'Cache-Control' = 'no-cache' }
 $deployedCommit = [string]$deployment.commit
 if ($deployedCommit -notmatch '^[0-9a-f]{40}$') {
@@ -124,7 +124,10 @@ if ($LabPath -in @('payloads/browser-failed-sign-in.ps1', 'payloads/tap-sign-in.
     }
     $payloadParameters.SubscriptionId = $SubscriptionId
     $payloadParameters.ResourceGroup = $ResourceGroup
-    if ($LabPath -eq 'payloads/tap-sign-in.ps1' -and $CaptureBrowserPage -eq '1') { $payloadParameters.CaptureBrowserPage = $true }
+    if ($LabPath -eq 'payloads/tap-sign-in.ps1') {
+        $payloadParameters.RepositoryCommit = $deployedCommit
+        if ($CaptureBrowserPage -eq '1') { $payloadParameters.CaptureBrowserPage = $true }
+    }
     if (-not [string]::IsNullOrWhiteSpace($AttemptCount)) { $payloadParameters.AttemptCount = $AttemptCount }
 }
 if ($LabPath -eq 'payloads/failed-sign-in.ps1' -and -not [string]::IsNullOrWhiteSpace($AttemptCount)) {

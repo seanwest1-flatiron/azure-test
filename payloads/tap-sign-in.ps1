@@ -10,11 +10,14 @@ param(
     [Parameter(Mandatory)]
     [string] $ResourceGroup,
     [Parameter()]
-    [switch] $CaptureBrowserPage
+    [switch] $CaptureBrowserPage,
+    [Parameter()]
+    [string] $RepositoryCommit
 )
 
 $ErrorActionPreference = 'Stop'
-$repositoryBase = 'https://raw.githubusercontent.com/seanwest1-flatiron/azure-test/main'
+$repositoryRevision = if ($RepositoryCommit -match '^[0-9a-f]{40}$') { $RepositoryCommit } else { 'main' }
+$repositoryBase = "https://raw.githubusercontent.com/seanwest1-flatiron/azure-test/$repositoryRevision"
 
 function Get-JwtClaim {
     param([string] $AccessToken, [string] $Name)
