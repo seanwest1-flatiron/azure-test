@@ -19,6 +19,13 @@
       "metadata": {
         "description": "Version of the bootstrap runbook deployed by After Party Labs."
       }
+    },
+    "tenantBaselineVersion": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Last successfully applied tenant baseline version."
+      }
     }
   },
   "resources": [
@@ -29,7 +36,8 @@
       "location": "[resourceGroup().location]",
       "tags": {
         "after-party-runner": "true",
-        "after-party-runner-version": "[parameters('runnerVersion')]"
+        "after-party-runner-version": "[parameters('runnerVersion')]",
+        "after-party-tenant-baseline-version": "[parameters('tenantBaselineVersion')]"
       },
       "identity": {
         "type": "SystemAssigned"

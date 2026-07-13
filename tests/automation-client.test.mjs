@@ -51,3 +51,15 @@ test("returns complete output and Automation error streams", async () => {
   assert.equal(result.status, "Failed");
   assert.equal(result.output, "runbook output\njob exception\nstream failure");
 });
+
+test("discovers runner and tenant baseline versions from Azure tags", async () => {
+  const runner = await automation.findRunner({
+    requestJson: async path => path.includes("/runbooks/") ? {} : { value: [{ name: "after-party-account", tags: { "after-party-runner": "true", "after-party-runner-version": "runner-2", "after-party-tenant-baseline-version": "baseline-3" } }] },
+    subscriptionId: "sub",
+    resourceGroup: "rg",
+    runbookName: "AfterPartyBootstrap"
+  });
+
+  assert.equal(runner.runnerVersion, "runner-2");
+  assert.equal(runner.tenantBaselineVersion, "baseline-3");
+});

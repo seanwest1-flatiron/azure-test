@@ -12,4 +12,6 @@ $result = Invoke-Pester -Path $pesterTests.FullName -Output Detailed -PassThru
 if ($result.FailedCount -gt 0) { throw "$($result.FailedCount) PowerShell test(s) failed." }
 
 & node --test (Join-Path $PSScriptRoot 'automation-client.test.mjs')
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& node --test (Join-Path $PSScriptRoot 'prerequisite-flow.test.mjs')
 if ($LASTEXITCODE -ne 0) { throw 'JavaScript tests failed.' }

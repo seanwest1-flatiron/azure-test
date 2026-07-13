@@ -21,19 +21,24 @@ system-assigned managed identity at run time.
 
 ## Flow
 
+Selecting a lab resumes sign-in and authorization when needed, restores the last
+environment, discovers the Automation runner, updates it only when its runner
+version is stale, and prepares the tenant only when its applied baseline marker
+is stale. The original lab starts after those prerequisites succeed. Manual
+repair and baseline reapply controls remain under **Environment details**.
+
 The site deploys `azuredeploy.json` through Azure Resource Manager, then grants
-the Automation account's managed identity the Microsoft Graph `Mail.Send` and
-`Files.ReadWrite.All` application roles. A later button click creates an Automation job directly with
-the ARM REST API. The installed bootstrap runbook downloads the selected script
-under `payloads/` from the `main` branch for each job, so ordinary payload changes do not
-require runner reinstallation.
+the Automation account's managed identity the required Microsoft Graph
+application roles. The installed bootstrap runbook downloads the selected
+script under `payloads/` from the `main` branch for each job.
 
 `version.json` is the release manifest. On every page load, the browser fetches
-it without using the cache and uses its site version for the application assets.
-The bootstrap runbook uses its payload version for runtime files. Bump all three
-versions when publishing a change; select **Update environment** only when the
-bootstrap runbook or its permissions need to change. The Diagnostics section
-shows the loaded site version, current runner version, and detected runner tag.
+it without using the cache and uses its site version for application assets.
+`runnerVersion` covers infrastructure, bootstrap, roles, and permissions;
+`payloadVersion` cache-busts runtime files; and `tenantBaselineVersion` marks the
+last successfully applied tenant baseline on the Automation account. Payload
+changes do not trigger setup. Environment details show desired and detected
+versions plus deployed-artifact diagnostics.
 
 ## GitHub Pages publishing
 
@@ -60,6 +65,7 @@ isolated tenant before using this design elsewhere.
 
 - `index.html`, `styles.css`, `app.js`: static application
 - `automation-client.js`: shared Automation account discovery and job lifecycle logic
+- `prerequisite-flow.js`: testable lab prerequisite coordinator
 - `config.js`: public, non-secret SPA and repository settings
 - `azuredeploy.json`: Automation account and bootstrap runbook deployment
 - `runbooks/bootstrap.ps1`: stable runner installed into Automation
@@ -82,7 +88,7 @@ it does not enable public-client flows on the browser SPA registration.
 The browser failed-sign-in operation uses Azure Container Instances for one
 short-lived Playwright worker. Select **Update environment** once after this
 release so the Automation identity receives the scoped Container Instances role.
-- `version.json`: cache-busting site, runner, and payload release versions
+- `version.json`: cache-busting site, runner, payload, and tenant-baseline versions
 
 ## Tests and command-line job runner
 

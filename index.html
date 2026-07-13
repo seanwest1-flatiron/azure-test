@@ -10,107 +10,90 @@
   <main>
     <p class="eyebrow">After Party</p>
     <h1>After Party Labs</h1>
-    <p class="lede">Sign in, set up your reusable Azure Automation environment once, then run operations without returning to an Azure deployment form.</p>
+    <p class="lede">Choose a lab. After Party checks sign-in, the reusable environment, and the tenant baseline before it starts.</p>
 
     <div id="configuration-warning" class="notice warning" hidden></div>
     <div id="status" class="notice" role="status" aria-live="polite">Checking configuration…</div>
+    <div id="environment-status" class="environment-status" role="status" aria-live="polite">Environment will be checked when a lab starts.</div>
 
-    <section class="card">
-      <div class="section-heading">
-        <div><span class="step">1</span><h2>Sign in</h2></div>
+    <details class="environment-details">
+      <summary>Environment details</summary>
+      <div class="section-heading environment-account">
+        <div><h2>Account and environment</h2></div>
         <button id="sign-in" type="button">Sign in with Microsoft</button>
         <button id="sign-out" class="secondary" type="button" hidden>Sign out</button>
       </div>
       <p id="account">Not signed in.</p>
       <p id="authorization">Azure and Microsoft Graph access has not been authorized for an operation yet.</p>
-    </section>
-
-    <section class="card" id="install-section">
-      <div class="section-heading"><div><span class="step">2</span><h2>Environment</h2></div></div>
-      <p>Uses one reusable Automation account with a system-assigned managed identity and the permissions required by the available operations.</p>
       <button id="authorize-azure" class="secondary" type="button" disabled>Authorize Azure and load subscriptions</button>
       <div class="fields">
         <label>Azure subscription<select id="subscription" disabled><option value="">Sign in first</option></select></label>
         <label>Resource group<select id="resource-group" disabled><option value="">Choose a subscription</option></select></label>
       </div>
-      <div id="environment-status" class="environment-status" role="status" aria-live="polite">Choose a resource group to check the environment.</div>
-      <button id="install" type="button" disabled>Set up environment</button>
-    </section>
+      <div class="manual-controls">
+        <button id="install" type="button" disabled>Repair or update environment</button>
+        <button id="run-tenant-seed" class="secondary" type="button" disabled>Reapply tenant baseline</button>
+      </div>
+      <div id="tenant-seed-job-status" class="job-status" role="status" aria-live="polite" hidden></div>
+      <p id="diagnostics">Loading site version…</p>
+    </details>
 
     <section class="card">
-      <div class="section-heading"><div><span class="step">3</span><h2>Send email</h2></div></div>
+      <div class="section-heading"><div><span class="step">1</span><h2>Send email</h2></div></div>
       <p>Sends one message from <code>kobe@corywest.onmicrosoft.com</code> to <code>cory@corywest.onmicrosoft.com</code>.</p>
       <button id="run" type="button" disabled>Send email</button>
       <div id="email-job-status" class="job-status" role="status" aria-live="polite" hidden></div>
     </section>
 
     <section class="card">
-      <div class="section-heading"><div><span class="step">4</span><h2>Share OneDrive file</h2></div></div>
+      <div class="section-heading"><div><span class="step">2</span><h2>Share OneDrive file</h2></div></div>
       <p>Creates a text file in <code>kobe@corywest.onmicrosoft.com</code>'s OneDrive and grants <code>cory@corywest.onmicrosoft.com</code> read access. Microsoft Graph sends Cory the sharing invitation.</p>
       <button id="run-file-share" type="button" disabled>Share file</button>
       <div id="file-share-job-status" class="job-status" role="status" aria-live="polite" hidden></div>
     </section>
 
     <section class="card">
-      <div class="section-heading"><div><span class="step">5</span><h2>Send message batch</h2></div></div>
+      <div class="section-heading"><div><span class="step">3</span><h2>Send message batch</h2></div></div>
       <p>Sends 100 messages between Kobe and Cory. Some include text attachments and account-status notices.</p>
       <button id="run-email-triage" type="button" disabled>Send message batch</button>
       <div id="message-batch-job-status" class="job-status" role="status" aria-live="polite" hidden></div>
     </section>
 
     <section class="card">
-      <div class="section-heading"><div><span class="step">6</span><h2>Send customer payment export</h2></div></div>
+      <div class="section-heading"><div><span class="step">4</span><h2>Send customer payment export</h2></div></div>
       <p>Sends a customer payment export from <code>kobe@corywest.onmicrosoft.com</code> to <code>test-customer-data@mailinator.com</code>.</p>
       <button id="run-customer-payment-export" type="button" disabled>Send payment export</button>
       <div id="payment-export-job-status" class="job-status" role="status" aria-live="polite" hidden></div>
     </section>
 
     <section class="card">
-      <div class="section-heading"><div><span class="step">7</span><h2>Send external email</h2></div></div>
+      <div class="section-heading"><div><span class="step">5</span><h2>Send external email</h2></div></div>
       <p>Sends a message from <code>kobe@corywest.onmicrosoft.com</code> to <code>jonk9980@gmail.com</code>.</p>
       <button id="run-external-email" type="button" disabled>Send external email</button>
       <div id="external-email-job-status" class="job-status" role="status" aria-live="polite" hidden></div>
     </section>
 
     <section class="card">
-      <div class="section-heading"><div><span class="step">8</span><h2>Prepare tenant</h2></div></div>
-      <p>Maintains the version-controlled baseline of employee accounts, department Microsoft 365 groups, memberships, the licensed All Employees group, and lab password-rule settings.</p>
-      <p class="note">The relaxed lockout rule is intentional for After Party lab activity and is not a production security recommendation.</p>
-      <p class="note">Before the first run, select <strong>Update environment</strong> once to grant the required directory and license permissions to the Automation identity.</p>
-      <button id="run-tenant-seed" type="button" disabled>Prepare tenant</button>
-      <div id="tenant-seed-job-status" class="job-status" role="status" aria-live="polite" hidden></div>
-    </section>
-
-    <section class="card">
-      <div class="section-heading"><div><span class="step">9</span><h2>Failed sign-in</h2></div></div>
+      <div class="section-heading"><div><span class="step">6</span><h2>Failed sign-in</h2></div></div>
       <p>Submits one incorrect-password sign-in for a seeded non-admin account so Microsoft Entra records the failed attempt.</p>
       <button id="run-failed-sign-in" type="button" disabled>Record failed sign-in</button>
       <div id="failed-sign-in-job-status" class="job-status" role="status" aria-live="polite" hidden></div>
     </section>
 
     <section class="card">
-      <div class="section-heading"><div><span class="step">11</span><h2>Three browser failed sign-ins</h2></div></div>
+      <div class="section-heading"><div><span class="step">7</span><h2>Three browser failed sign-ins</h2></div></div>
       <p>Uses one short-lived browser worker to submit three sequential incorrect-password sign-ins for a seeded non-admin user.</p>
       <button id="run-browser-failed-sign-in-three" type="button" disabled>Record three browser failed sign-ins</button>
       <div id="browser-failed-sign-in-three-job-status" class="job-status" role="status" aria-live="polite" hidden></div>
     </section>
 
     <section class="card">
-      <div class="section-heading"><div><span class="step">10</span><h2>Browser failed sign-in</h2></div></div>
+      <div class="section-heading"><div><span class="step">8</span><h2>Browser failed sign-in</h2></div></div>
       <p>Uses one short-lived browser worker to submit one incorrect-password sign-in for a seeded non-admin account and return the Entra result.</p>
       <button id="run-browser-failed-sign-in" type="button" disabled>Record browser failed sign-in</button>
       <div id="browser-failed-sign-in-job-status" class="job-status" role="status" aria-live="polite" hidden></div>
     </section>
 
-    <details>
-      <summary>Technical and permission details</summary>
-      <p>The installer uses your delegated ARM permissions to create Azure resources and delegated Graph permissions to assign an application role. The runbook receives a Graph token from Azure's managed identity endpoint. Tokens are never stored by this application.</p>
-    </details>
-
-    <details class="diagnostics">
-      <summary>Diagnostics</summary>
-      <p id="diagnostics">Loading site version…</p>
-    </details>
   </main>
 
   <script>
@@ -139,13 +122,14 @@
         const manifestResponse = await fetch(`version.json?nonce=${Date.now()}`, { cache: "no-store" });
         if (!manifestResponse.ok) throw new Error(`version manifest returned ${manifestResponse.status}.`);
         const manifest = await manifestResponse.json();
-        if (!manifest.siteVersion || !manifest.runnerVersion || !manifest.payloadVersion) throw new Error("version manifest is incomplete.");
+        if (!manifest.siteVersion || !manifest.runnerVersion || !manifest.payloadVersion || !manifest.tenantBaselineVersion) throw new Error("version manifest is incomplete.");
         window.AFTER_PARTY_BUILD = Object.freeze(manifest);
         const version = encodeURIComponent(manifest.siteVersion);
         await addStylesheet(`styles.css?v=${version}`);
         await addScript(`config.js?v=${version}`);
         await addScript(`msal-browser.min.js?v=${version}`);
         await addScript(`automation-client.js?v=${version}`);
+        await addScript(`prerequisite-flow.js?v=${version}`);
         await addScript(`app.js?v=${version}`);
       })().catch(showLoaderError);
     })();

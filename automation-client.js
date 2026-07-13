@@ -37,7 +37,8 @@
           resourceGroup,
           automationAccountName: candidate.name,
           runbookName,
-          runnerVersion: candidate.tags?.["after-party-runner-version"] || "unknown (update environment to record version)"
+          runnerVersion: candidate.tags?.["after-party-runner-version"] || "unknown (update environment to record version)",
+          tenantBaselineVersion: candidate.tags?.["after-party-tenant-baseline-version"] || ""
         };
       } catch (error) {
         if (error.status !== 404) throw error;

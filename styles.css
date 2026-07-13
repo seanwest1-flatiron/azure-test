@@ -30,5 +30,12 @@ code { color: #d9e1ff; }
 details { color: #c8d0e7; }
 .diagnostics { padding: 14px 18px; font-size: .9rem; }
 .diagnostics p { margin: 10px 0 0; color: #aebbd9; }
+.environment-details { padding: 16px 20px; }
+.environment-details[open] { padding-bottom: 24px; }
+.environment-details > summary { margin-bottom: 0; }
+.environment-details[open] > summary { margin-bottom: 20px; }
+.environment-account { margin-bottom: 12px; }
+.manual-controls { display: flex; flex-wrap: wrap; gap: 12px; }
+.environment-details #diagnostics { margin: 18px 0 0; color: #aebbd9; font-size: .9rem; }
 summary { cursor: pointer; color: #f5f7ff; font-weight: 700; }
 @media (max-width: 620px) { main { padding: 36px 0; } .fields { grid-template-columns: 1fr; } .section-heading { align-items: flex-start; flex-direction: column; } }
