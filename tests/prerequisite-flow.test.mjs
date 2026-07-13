@@ -42,6 +42,29 @@ test("resumes the selected lab after redirect sign-in", async () => {
   assert.equal(starts, 1);
 });
 
+test("resumes the three non-interactive failed sign-ins operation with its attempt count", async () => {
+  let signedIn = false;
+  let pending;
+  let started;
+  const redirect = new Error("redirecting");
+  const threeFailedSignIns = {
+    operation: "failedSignInThree",
+    label: "Three non-interactive failed sign-ins",
+    payloadPath: "payloads/failed-sign-in.ps1",
+    parameters: Object.freeze({ AttemptCount: "3" })
+  };
+  const flow = createPrerequisiteFlow(dependencies({
+    isSignedIn: () => signedIn,
+    signIn: async selectedLab => { pending = selectedLab; throw redirect; },
+    startLab: async selectedLab => { started = selectedLab; }
+  }));
+
+  await assert.rejects(flow.start(threeFailedSignIns), redirect);
+  signedIn = true;
+  await flow.start(pending);
+  assert.deepEqual(started, threeFailedSignIns);
+});
+
 test("updates a stale runner before starting the lab", async () => {
   let installs = 0;
   let starts = 0;

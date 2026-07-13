@@ -36,7 +36,7 @@
     sendCustomerPaymentExport: { operation: "sendCustomerPaymentExport", payloadPath: "payloads/send-customer-payment-export.ps1", label: "Customer payment export", statusId: "payment-export-job-status" },
     sendExternalEmail: { operation: "sendExternalEmail", payloadPath: "payloads/send-external-email.ps1", label: "External email", statusId: "external-email-job-status" },
     failedSignIn: { operation: "failedSignIn", payloadPath: "payloads/failed-sign-in.ps1", label: "Failed sign-in", statusId: "failed-sign-in-job-status" },
-    failedSignInThree: { operation: "failedSignInThree", payloadPath: "payloads/failed-sign-in.ps1", label: "Three non-interactive failed sign-ins", statusId: "failed-sign-in-three-job-status", parameters: { AttemptCount: "3" } },
+    failedSignInThree: { operation: "failedSignInThree", payloadPath: "payloads/failed-sign-in.ps1", label: "Three non-interactive failed sign-ins", statusId: "failed-sign-in-three-job-status", parameters: Object.freeze({ AttemptCount: "3" }) },
     browserFailedSignIn: { operation: "browserFailedSignIn", payloadPath: "payloads/browser-failed-sign-in.ps1", label: "Browser failed sign-in", statusId: "browser-failed-sign-in-job-status" },
     browserFailedSignInThree: { operation: "browserFailedSignInThree", payloadPath: "payloads/browser-failed-sign-in.ps1", label: "Three browser failed sign-ins", statusId: "browser-failed-sign-in-three-job-status", parameters: { AttemptCount: "3" } }
   });

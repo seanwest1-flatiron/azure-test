@@ -38,6 +38,36 @@ test("passes browser worker context only when the caller supplies it", async () 
   });
 });
 
+test("serializes the three non-interactive failed sign-ins job with its attempt count", async () => {
+  let request;
+  await automation.startJob({
+    requestJson: async (path, options) => { request = { path, options }; },
+    runner: { subscriptionId: "sub", resourceGroup: "rg", automationAccountName: "account", runbookName: "AfterPartyBootstrap" },
+    payloadPath: "payloads/failed-sign-in.ps1",
+    jobId: "job-id",
+    parameters: { AttemptCount: "3" }
+  });
+
+  assert.deepEqual(JSON.parse(request.options.body).properties.parameters, {
+    LabPath: "payloads/failed-sign-in.ps1",
+    AttemptCount: "3"
+  });
+});
+
+test("leaves the ordinary failed sign-in job at the payload default", async () => {
+  let request;
+  await automation.startJob({
+    requestJson: async (path, options) => { request = { path, options }; },
+    runner: { subscriptionId: "sub", resourceGroup: "rg", automationAccountName: "account", runbookName: "AfterPartyBootstrap" },
+    payloadPath: "payloads/failed-sign-in.ps1",
+    jobId: "job-id"
+  });
+
+  assert.deepEqual(JSON.parse(request.options.body).properties.parameters, {
+    LabPath: "payloads/failed-sign-in.ps1"
+  });
+});
+
 test("returns complete output and Automation error streams", async () => {
   const result = await automation.waitForJob({
     requestJson: async path => path.includes("/streams?")

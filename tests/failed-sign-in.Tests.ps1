@@ -54,6 +54,9 @@ Describe 'Failed sign-in payload' {
         }
         @($global:AfterPartyInvalidPasswords | Select-Object -Unique).Count | Should -Be 1
         $global:AfterPartyInvalidPasswords[0] | Should -Match '^AfterParty-Invalid-'
-        @($output | Where-Object { $_ -match '^Attempt [1-3] of 3 recorded for lisa\.simpson@corywest\.onmicrosoft\.com at .+\. Expected invalid-credentials response received: AADSTS50126\. Correlation ID: correlation-id$' }).Count | Should -Be 3
+        $output.Count | Should -Be 3
+        $output[0] | Should -Match '^Attempt 1 of 3 recorded for lisa\.simpson@corywest\.onmicrosoft\.com at .+\. Expected invalid-credentials response received: AADSTS50126\. Correlation ID: correlation-id$'
+        $output[1] | Should -Match '^Attempt 2 of 3 recorded for lisa\.simpson@corywest\.onmicrosoft\.com at .+\. Expected invalid-credentials response received: AADSTS50126\. Correlation ID: correlation-id$'
+        $output[2] | Should -Match '^Attempt 3 of 3 recorded for lisa\.simpson@corywest\.onmicrosoft\.com at .+\. Expected invalid-credentials response received: AADSTS50126\. Correlation ID: correlation-id$'
     }
 }
