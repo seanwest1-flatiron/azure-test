@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 process.env.AFTER_PARTY_WORKER_TEST = "1";
@@ -105,4 +106,13 @@ test("redacts TAP and OAuth artifacts and validates the delegated tenant claim",
 test("removes query strings and fragments from captured page locations", () => {
   assert.equal(diagnosticUrl("https://login.microsoftonline.com/tenant/login?code=secret#fragment"), "https://login.microsoftonline.com/tenant/login");
   assert.equal(diagnosticUrl("not a url"), "unavailable");
+});
+
+test("captures each recognized page state once while masking visible inputs", () => {
+  const source = readFileSync(new URL("../payloads/tap-sign-in-worker.mjs", import.meta.url), "utf8");
+  assert.match(source, /capturedPageStates\.has\(state\)/);
+  assert.match(source, /emitPageCapture\(page, "temporary-access-pass"\)/);
+  assert.match(source, /emitPageCapture\(page, "permissions-requested"\)/);
+  assert.match(source, /mask: \[page\.locator\("input:visible, textarea:visible"\)\]/);
+  assert.doesNotMatch(source, /element\.value = ""/);
 });

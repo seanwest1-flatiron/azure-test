@@ -7,7 +7,7 @@ const clientId = process.env.CLIENT_ID;
 const userAlias = process.env.USER_ALIAS;
 const temporaryAccessPass = process.env.TEMPORARY_ACCESS_PASS;
 const capturePageOnFailure = process.env.CAPTURE_PAGE_ON_FAILURE === "1";
-let pageCaptureEmitted = false;
+const capturedPageStates = new Set();
 
 export const TAP_INPUT_SELECTOR = 'input[name="accesspass"]:visible, input[name="passwd"]:visible, input[name="otc"]:visible, #idTxtBx_SAOTCC_OTC:visible';
 export const TAP_SUBMIT_FALLBACK_SELECTOR = 'button[type="submit"]:visible, input[type="submit"]:visible, #idSIButton9:visible';
@@ -98,28 +98,30 @@ export function diagnosticUrl(value) {
   } catch { return "unavailable"; }
 }
 
-async function emitPageCapture(page) {
-  if (!capturePageOnFailure || pageCaptureEmitted || !page) return;
-  pageCaptureEmitted = true;
+async function emitPageCapture(page, requestedState) {
+  if (!capturePageOnFailure || !page) return;
+  const state = /^[a-z0-9-]+$/.test(requestedState || "") ? requestedState : "unrecognized";
+  if (capturedPageStates.has(state)) return;
+  capturedPageStates.add(state);
   try {
     const diagnostic = {
+      state,
       title: safeText(await page.title(), 200),
       url: diagnosticUrl(page.url()),
       headings: await page.locator("h1:visible, h2:visible, h3:visible, h4:visible, h5:visible, h6:visible").allInnerTexts().then(values => values.map(value => safeText(value, 200)).filter(Boolean)),
       buttons: await page.locator('button:visible, input[type="submit"]:visible, input[type="button"]:visible').evaluateAll(elements => elements.map(element => (element.getAttribute("aria-label") || element.value || element.innerText || "").trim()).filter(Boolean)),
       inputs: await page.locator("input:visible").evaluateAll(elements => elements.map(element => ({ name: element.getAttribute("name") || "", type: element.getAttribute("type") || "text" })))
     };
-    await page.locator("input, textarea").evaluateAll(elements => elements.forEach(element => { element.value = ""; element.setAttribute("value", ""); }));
-    const screenshot = await page.screenshot({ type: "jpeg", quality: 75, fullPage: false });
+    const screenshot = await page.screenshot({ type: "jpeg", quality: 75, fullPage: false, mask: [page.locator("input:visible, textarea:visible")], maskColor: "#000000" });
     const encoded = screenshot.toString("base64");
     const chunkSize = 6000;
     const total = Math.ceil(encoded.length / chunkSize);
     console.log(`TAP_PAGE_DIAGNOSTIC ${JSON.stringify(diagnostic)}`);
     for (let index = 0; index < total; index += 1) {
-      console.log(`TAP_PAGE_SCREENSHOT ${index + 1}/${total} ${encoded.slice(index * chunkSize, (index + 1) * chunkSize)}`);
+      console.log(`TAP_PAGE_SCREENSHOT ${state} ${index + 1}/${total} ${encoded.slice(index * chunkSize, (index + 1) * chunkSize)}`);
     }
   } catch (error) {
-    console.log(`TAP_PAGE_DIAGNOSTIC ${JSON.stringify({ title: "unavailable", url: diagnosticUrl(page.url()), headings: [], buttons: [], inputs: [], captureError: safeText(error?.message, 300) })}`);
+    console.log(`TAP_PAGE_DIAGNOSTIC ${JSON.stringify({ state, title: "unavailable", url: diagnosticUrl(page.url()), headings: [], buttons: [], inputs: [], captureError: safeText(error?.message, 300) })}`);
   }
 }
 
@@ -155,11 +157,13 @@ async function submitTap(page, upn) {
     tapVisible: await tapInput.isVisible().catch(() => false)
   });
   if (stage === "username") {
+    await emitPageCapture(page, "username");
     await username.fill(upn);
     await page.locator("#idSIButton9").click();
   }
 
   await tapInput.waitFor({ state: "visible", timeout: 30000 });
+  await emitPageCapture(page, "temporary-access-pass");
   await tapInput.fill(temporaryAccessPass);
   await clickTapSignIn(page);
 }
@@ -169,10 +173,12 @@ async function advancePostAuthentication(page) {
     const text = await visiblePageText(page);
     if (isRegistrationInterruption(page.url(), text)) return;
     if (/stay signed in/i.test(text)) {
+      await emitPageCapture(page, "stay-signed-in");
       const no = page.locator('#idBtn_Back, button:has-text("No")').first();
       if (await no.isVisible().catch(() => false)) { await no.click(); await new Promise(resolve => setTimeout(resolve, 500)); continue; }
     }
     if (isPermissionsRequestedPage(text)) {
+      await emitPageCapture(page, "permissions-requested");
       if (await clickConsentAccept(page)) { await new Promise(resolve => setTimeout(resolve, 500)); continue; }
     }
     return;
@@ -218,11 +224,11 @@ async function run() {
         if (["code", "registration"].includes(outcome.kind)) break;
         const retryable = /temporary access pass|try again|incorrect|invalid|expired|not recognized/i.test(outcome.message || "");
         if (!retryable || propagationAttempt === 3) {
-          await emitPageCapture(page);
+          await emitPageCapture(page, "unrecognized");
           break;
         }
       } catch (error) {
-        await emitPageCapture(page);
+        await emitPageCapture(page, "unrecognized");
         throw error;
       } finally {
         await context.close();
