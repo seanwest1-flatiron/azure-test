@@ -62,13 +62,14 @@ test("keeps the global status quiet when idle and progress on the selected lab",
 });
 
 test("puts authentication in a responsive account control", () => {
-  assert.match(index, /<header class="site-header">[\s\S]*?id="sign-in"[\s\S]*?Sign in with Microsoft/);
+  assert.match(index, /<header class="site-header">[\s\S]*?class="account-control"[\s\S]*?id="sign-in"[\s\S]*?Sign in with Microsoft[\s\S]*?<h1>After Party Labs \(WIP\)<\/h1>/);
   assert.match(index, /<details id="account-menu" class="account-menu" hidden>[\s\S]*?id="account-button"[\s\S]*?id="account-environment"[\s\S]*?id="sign-out"/);
   assert.match(app, /el\["account-button"\]\.textContent = displayName/);
   assert.match(app, /el\["account-menu"\]\.hidden = !signedIn/);
-  assert.match(styles, /\.account-control \{ position: relative/);
+  assert.match(styles, /\.site-header \{[^}]*flex-direction: column[^}]*align-items: stretch/);
+  assert.match(styles, /\.account-control \{ position: relative; align-self: flex-end/);
+  assert.match(styles, /h1 \{[^}]*text-align: center/);
   assert.match(styles, /button:focus-visible, summary:focus-visible, select:focus-visible/);
-  assert.match(styles, /@media \(max-width: 620px\)[\s\S]*?\.site-header \{[^}]*flex-direction: column/);
 });
 
 test("uses the revised concise header and dismissible account menu", () => {
