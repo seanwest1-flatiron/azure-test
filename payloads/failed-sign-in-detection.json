@@ -1,9 +1,10 @@
 {
   "id": "after-party-lisa-aadsts50126-three-in-one-hour",
   "displayName": "Lisa Simpson repeated invalid-password sign-ins",
-  "description": "Alerts on three AADSTS50126 invalid-password sign-ins for Lisa Simpson through the dedicated After Party sign-in application within one hour.",
+  "description": "Alerts on three AADSTS50126 invalid-password sign-ins for Lisa Simpson through the dedicated After Party sign-in application within any one-hour period, checking the preceding three hours for delayed ingestion.",
   "threshold": 3,
   "windowMinutes": 60,
+  "searchHorizonHours": 3,
   "frequency": "PT1H",
   "severity": "medium",
   "category": "CredentialAccess"

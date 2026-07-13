@@ -25,7 +25,7 @@ if ([string]::IsNullOrWhiteSpace([string]$baseline.failedSignInLab.applicationDi
 if (@($baseline.users | Where-Object { $_.userAlias -eq $baseline.failedSignInLab.userAlias }).Count -ne 1) {
     throw "The failed sign-in target alias '$($baseline.failedSignInLab.userAlias)' is not a configured baseline user."
 }
-if ([string]::IsNullOrWhiteSpace([string]$definition.id) -or [int]$definition.threshold -lt 3 -or [int]$definition.windowMinutes -lt 1 -or [int]$definition.windowMinutes -gt 60) {
+if ([string]::IsNullOrWhiteSpace([string]$definition.id) -or [int]$definition.threshold -lt 3 -or [int]$definition.windowMinutes -ne 60 -or [int]$definition.searchHorizonHours -ne 3) {
     throw 'The failed sign-in custom detection configuration must require at least three failures within no more than one hour.'
 }
 
@@ -80,14 +80,22 @@ $applicationId = [string]$applications[0].appId
 $escapedUpn = $userPrincipalName -replace "'", "''"
 $escapedApplicationId = $applicationId -replace "'", "''"
 $query = @"
-EntraIdSignInEvents
-| where Timestamp > ago($([int]$definition.windowMinutes)m)
+let MatchingFailures = EntraIdSignInEvents
+| where Timestamp > ago($([int]$definition.searchHorizonHours)h)
 | where AccountUpn =~ '$escapedUpn'
 | where ApplicationId == '$escapedApplicationId'
 | where ErrorCode == 50126
-| summarize arg_max(Timestamp, ReportId), FailureCount = count(), CorrelationIds = make_set(CorrelationId, $([int]$definition.threshold)) by AccountUpn, ApplicationId
+| project Timestamp, ReportId, AccountUpn, ApplicationId, CorrelationId;
+MatchingFailures
+| join kind=inner (
+    MatchingFailures
+    | project ClusterWindowStart = Timestamp, AccountUpn, ApplicationId
+) on AccountUpn, ApplicationId
+| where Timestamp between (ClusterWindowStart .. ClusterWindowStart + $([int]$definition.windowMinutes)m)
+| summarize FailureCount = count(), CorrelationIds = make_set(CorrelationId, $([int]$definition.threshold)), ClusterWindowEnd = max(Timestamp), arg_max(Timestamp, ReportId) by AccountUpn, ApplicationId, ClusterWindowStart
 | where FailureCount >= $([int]$definition.threshold)
-| project Timestamp, ReportId, AccountUpn, ApplicationId, FailureCount, CorrelationIds
+| top 1 by ClusterWindowEnd desc, ClusterWindowStart desc
+| project Timestamp, ReportId, AccountUpn, ApplicationId, FailureCount, ClusterWindowStart, ClusterWindowEnd, CorrelationIds
 "@.Trim()
 $rule = @{
     '@odata.type' = '#microsoft.graph.security.detectionRule'
@@ -109,22 +117,70 @@ $rule = @{
     }
 }
 $path = "/security/rules/detectionRules/$([Uri]::EscapeDataString([string]$definition.id))"
-$created = $false
+
+function Get-RuleActionCount {
+    param($DetectionRule, [string]$PropertyName)
+    $actions = $DetectionRule.detectionAction.$PropertyName
+    if ($null -eq $actions) { return 0 }
+    if ($actions -is [System.Collections.IEnumerable] -and $actions -isnot [string]) { return @($actions).Count }
+    return @($actions.psobject.Properties).Count
+}
+
+function Test-RuleNeedsRepair {
+    param($ExistingRule)
+    if ($ExistingRule.displayName -ne $rule.displayName -or $ExistingRule.description -ne $rule.description) { return $true }
+    if ($ExistingRule.queryCondition.queryText -ne $query) { return $true }
+    if ($ExistingRule.schedule.frequency -ne $rule.schedule.frequency) { return $true }
+    if ((Get-RuleActionCount -DetectionRule $ExistingRule -PropertyName 'automatedActions') -gt 0) { return $true }
+    if ((Get-RuleActionCount -DetectionRule $ExistingRule -PropertyName 'responseActions') -gt 0) { return $true }
+    return $false
+}
+
+function Assert-AlertOnlyRule {
+    param($VerifiedRule, [string]$ExpectedStatus)
+    if ($VerifiedRule.status -ne $ExpectedStatus) { throw "Custom detection '$($definition.id)' was not $ExpectedStatus." }
+    if ($ExpectedStatus -eq 'enabled' -and $VerifiedRule.queryCondition.queryText -ne $query) { throw "Custom detection '$($definition.id)' query verification failed." }
+    if ((Get-RuleActionCount -DetectionRule $VerifiedRule -PropertyName 'automatedActions') -gt 0 -or (Get-RuleActionCount -DetectionRule $VerifiedRule -PropertyName 'responseActions') -gt 0) {
+        throw "Custom detection '$($definition.id)' unexpectedly contains a remediation action."
+    }
+}
+
+$existing = $null
 try {
-    Invoke-Graph -Method GET -Path $path -ApiVersion beta | Out-Null
-    Invoke-Graph -Method PATCH -Path $path -Body $rule -ApiVersion beta | Out-Null
+    $existing = Invoke-Graph -Method GET -Path $path -ApiVersion beta
 } catch {
     if ((Get-GraphStatusCode -ErrorRecord $_) -ne 404) { throw }
     Invoke-Graph -Method POST -Path '/security/rules/detectionRules' -Body $rule -ApiVersion beta | Out-Null
-    $created = $true
+    $verified = Invoke-Graph -Method GET -Path $path -ApiVersion beta
+    Assert-AlertOnlyRule -VerifiedRule $verified -ExpectedStatus 'enabled'
+    Write-Output "Custom detection '$($definition.displayName)' created and enabled for $userPrincipalName through '$($baseline.failedSignInLab.applicationDisplayName)'. The rule is alert-only with no automated remediation and is eligible for Defender's normal immediate first evaluation."
+    return
 }
-$verified = Invoke-Graph -Method GET -Path $path -ApiVersion beta
-if ($verified.status -ne 'enabled') { throw "Custom detection '$($definition.id)' was not enabled." }
-if ($verified.queryCondition.queryText -ne $query) { throw "Custom detection '$($definition.id)' query verification failed." }
-$automatedActions = $verified.detectionAction.automatedActions
-$automatedActionCount = if ($null -eq $automatedActions) { 0 } else { @($automatedActions.psobject.Properties).Count }
-$legacyResponseActions = $verified.detectionAction.responseActions
-$legacyResponseActionCount = if ($null -eq $legacyResponseActions) { 0 } else { @($legacyResponseActions).Count }
-if ($automatedActionCount -or $legacyResponseActionCount) { throw "Custom detection '$($definition.id)' unexpectedly contains a remediation action." }
-$verb = if ($created) { 'created' } else { 'repaired' }
-Write-Output "Custom detection '$($definition.displayName)' $verb and enabled for $userPrincipalName through '$($baseline.failedSignInLab.applicationDisplayName)'. The rule is alert-only with no automated remediation."
+
+switch ([string]$existing.status) {
+    'enabled' {
+        Invoke-Graph -Method PATCH -Path $path -Body @{ status = 'disabled' } -ApiVersion beta | Out-Null
+        $verified = Invoke-Graph -Method GET -Path $path -ApiVersion beta
+        Assert-AlertOnlyRule -VerifiedRule $verified -ExpectedStatus 'disabled'
+        Write-Output "Custom detection '$($definition.displayName)' disabled. The rule remains alert-only with no automated remediation."
+        return
+    }
+    'autoDisabled' {
+        $lastRun = $existing.lastRunDetails
+        $lastRunSummary = if ($null -eq $lastRun) { 'Defender did not return last-run details.' } else { "Last run: $($lastRun.lastRunDateTime); status: $($lastRun.status); error: $($lastRun.errorCode); reason: $($lastRun.failureReason)" }
+        Write-Output "Custom detection '$($definition.displayName)' is auto-disabled by Defender and was left unchanged. $lastRunSummary Review the rule before enabling it again."
+        return
+    }
+    'disabled' {
+        $needsRepair = Test-RuleNeedsRepair -ExistingRule $existing
+        Invoke-Graph -Method PATCH -Path $path -Body $rule -ApiVersion beta | Out-Null
+        $verified = Invoke-Graph -Method GET -Path $path -ApiVersion beta
+        Assert-AlertOnlyRule -VerifiedRule $verified -ExpectedStatus 'enabled'
+        $outcome = if ($needsRepair) { 'repaired and enabled' } else { 'enabled' }
+        Write-Output "Custom detection '$($definition.displayName)' $outcome for $userPrincipalName through '$($baseline.failedSignInLab.applicationDisplayName)'. The rule is alert-only with no automated remediation. Defender will evaluate the re-enabled rule on its hourly schedule."
+        return
+    }
+    default {
+        throw "Custom detection '$($definition.displayName)' has unsupported status '$($existing.status)' and was left unchanged."
+    }
+}

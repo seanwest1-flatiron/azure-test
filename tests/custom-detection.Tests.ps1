@@ -8,9 +8,10 @@ Describe 'Failed sign-in custom detection payload' {
         $global:AfterPartyDetectionDefinition = [pscustomobject]@{
             id = 'after-party-lisa-aadsts50126-three-in-one-hour'
             displayName = 'Lisa Simpson repeated invalid-password sign-ins'
-            description = 'Alerts on three AADSTS50126 invalid-password sign-ins for Lisa Simpson through the dedicated After Party sign-in application within one hour.'
+            description = 'Alerts on three AADSTS50126 invalid-password sign-ins for Lisa Simpson through the dedicated After Party sign-in application within any one-hour period, checking the preceding three hours for delayed ingestion.'
             threshold = 3
             windowMinutes = 60
+            searchHorizonHours = 3
             frequency = 'PT1H'
             severity = 'medium'
             category = 'CredentialAccess'
@@ -36,8 +37,11 @@ Describe 'Failed sign-in custom detection payload' {
                     throw $exception
                 }
                 if ($Method -eq 'PATCH') {
-                    $global:AfterPartyDetectionRule = $Body | ConvertFrom-Json
-                    return [pscustomobject]@{}
+                    $patch = $Body | ConvertFrom-Json
+                    foreach ($property in $patch.psobject.Properties) {
+                        $global:AfterPartyDetectionRule | Add-Member -MemberType NoteProperty -Name $property.Name -Value $property.Value -Force
+                    }
+                    return $global:AfterPartyDetectionRule
                 }
             }
             if ($Uri -eq 'https://graph.microsoft.com/beta/security/rules/detectionRules' -and $Method -eq 'POST') {
@@ -48,7 +52,7 @@ Describe 'Failed sign-in custom detection payload' {
         }
     }
 
-    It 'creates an enabled alert-only rule with tenant-relative Lisa, application, 50126, threshold, and window criteria' {
+    It 'creates a missing rule enabled with a delayed-ingestion-tolerant, alert-only query' {
         $output = & $payloadPath -GraphAccessToken 'graph-token' -TenantDomain 'student.onmicrosoft.com'
 
         Should -Invoke Invoke-RestMethod -Times 1 -ParameterFilter {
@@ -58,39 +62,86 @@ Describe 'Failed sign-in custom detection payload' {
             $Body -match 'lisa\.simpson@student\.onmicrosoft\.com' -and
             $Body -match 'dedicated-app-id' -and
             $Body -match 'ErrorCode == 50126' -and
+            $Body -match 'ago\(3h\)' -and
+            $Body -match 'ClusterWindowStart \.\. ClusterWindowStart \+ 60m' -and
             $Body -match 'FailureCount >= 3' -and
-            $Body -match 'ago\(60m\)' -and
+            $Body -match 'arg_max\(Timestamp, ReportId\)' -and
+            $Body -match 'top 1 by ClusterWindowEnd desc, ClusterWindowStart desc' -and
+            $Body -match 'project Timestamp, ReportId, AccountUpn, ApplicationId, FailureCount' -and
             $Body -match '"automatedActions"\s*:\s*\{\s*\}' -and
             $Body -notmatch 'responseActions|disableUser|resetPassword'
         }
         $global:AfterPartyDetectionRule.status | Should -Be 'enabled'
-        $global:AfterPartyDetectionRule.detectionAction.psobject.Properties.Name | Should -Contain 'alertTemplate'
         @($global:AfterPartyDetectionRule.detectionAction.automatedActions.psobject.Properties).Count | Should -Be 0
-        $global:AfterPartyDetectionRule.detectionAction.psobject.Properties.Name | Should -Not -Contain 'responseActions'
         ($output -join "`n") | Should -Match 'created and enabled for lisa\.simpson@student\.onmicrosoft\.com'
-        ($output -join "`n") | Should -Match 'alert-only with no automated remediation'
+        ($output -join "`n") | Should -Match 'normal immediate first evaluation'
     }
 
-    It 'repairs and enables the existing rule without creating another rule' {
+    It 'enables an existing disabled rule without an undocumented immediate-run request' {
+        & $payloadPath -GraphAccessToken 'graph-token' -TenantDomain 'school.onmicrosoft.com' | Out-Null
+        $global:AfterPartyDetectionRule.status = 'disabled'
+
+        $output = & $payloadPath -GraphAccessToken 'graph-token' -TenantDomain 'school.onmicrosoft.com'
+
+        Should -Invoke Invoke-RestMethod -Times 1 -ParameterFilter {
+            $Uri -eq 'https://graph.microsoft.com/beta/security/rules/detectionRules/after-party-lisa-aadsts50126-three-in-one-hour' -and
+            $Method -eq 'PATCH' -and $Body -match '"status"\s*:\s*"enabled"'
+        }
+        Should -Invoke Invoke-RestMethod -Times 0 -ParameterFilter { $Uri -match '/detectionRules/.+/(run|execute)' }
+        $global:AfterPartyDetectionRule.status | Should -Be 'enabled'
+        ($output -join "`n") | Should -Match 'enabled for lisa\.simpson@school\.onmicrosoft\.com'
+        ($output -join "`n") | Should -Match 'hourly schedule'
+        ($output -join "`n") | Should -Not -Match 'repaired and enabled'
+    }
+
+    It 'repairs and enables a disabled rule with stale query or remediation settings' {
         $global:AfterPartyDetectionRule = [pscustomobject]@{
             id = 'after-party-lisa-aadsts50126-three-in-one-hour'
             status = 'disabled'
+            displayName = 'Lisa Simpson repeated invalid-password sign-ins'
+            description = 'outdated description'
             queryCondition = [pscustomobject]@{ queryText = 'outdated query' }
+            schedule = [pscustomobject]@{ frequency = 'PT1H' }
             detectionAction = [pscustomobject]@{ automatedActions = [pscustomobject]@{ disableUsers = @([pscustomobject]@{ accountSidColumn = 'AccountSid' }) } }
+        }
+
+        $output = & $payloadPath -GraphAccessToken 'graph-token' -TenantDomain 'school.onmicrosoft.com'
+
+        $global:AfterPartyDetectionRule.status | Should -Be 'enabled'
+        @($global:AfterPartyDetectionRule.detectionAction.automatedActions.psobject.Properties).Count | Should -Be 0
+        ($output -join "`n") | Should -Match 'repaired and enabled'
+        ($output -join "`n") | Should -Match 'alert-only with no automated remediation'
+    }
+
+    It 'disables an existing enabled rule without changing it into a remediation rule' {
+        $global:AfterPartyDetectionRule = [pscustomobject]@{
+            id = 'after-party-lisa-aadsts50126-three-in-one-hour'
+            status = 'enabled'
+            detectionAction = [pscustomobject]@{ automatedActions = [pscustomobject]@{} }
         }
 
         $output = & $payloadPath -GraphAccessToken 'graph-token' -TenantDomain 'school.onmicrosoft.com'
 
         Should -Invoke Invoke-RestMethod -Times 1 -ParameterFilter {
             $Uri -eq 'https://graph.microsoft.com/beta/security/rules/detectionRules/after-party-lisa-aadsts50126-three-in-one-hour' -and
-            $Method -eq 'PATCH' -and
-            $Body -match '"status"\s*:\s*"enabled"' -and
-            $Body -match 'lisa\.simpson@school\.onmicrosoft\.com'
+            $Method -eq 'PATCH' -and $Body -match '"status"\s*:\s*"disabled"'
         }
-        Should -Invoke Invoke-RestMethod -Times 0 -ParameterFilter {
-            $Uri -eq 'https://graph.microsoft.com/beta/security/rules/detectionRules' -and $Method -eq 'POST'
+        $global:AfterPartyDetectionRule.status | Should -Be 'disabled'
+        ($output -join "`n") | Should -Match 'disabled\. The rule remains alert-only with no automated remediation'
+    }
+
+    It 'leaves an auto-disabled rule unchanged and reports Defender last-run details' {
+        $global:AfterPartyDetectionRule = [pscustomobject]@{
+            id = 'after-party-lisa-aadsts50126-three-in-one-hour'
+            status = 'autoDisabled'
+            lastRunDetails = [pscustomobject]@{ lastRunDateTime = '2026-07-13T12:00:00Z'; status = 'failed'; errorCode = 'queryTimeout'; failureReason = 'The query timed out.' }
         }
-        @($global:AfterPartyDetectionRule.detectionAction.automatedActions.psobject.Properties).Count | Should -Be 0
-        ($output -join "`n") | Should -Match 'repaired and enabled'
+
+        $output = & $payloadPath -GraphAccessToken 'graph-token' -TenantDomain 'school.onmicrosoft.com'
+
+        Should -Invoke Invoke-RestMethod -Times 0 -ParameterFilter { $Method -in @('PATCH', 'POST') -and $Uri -match '/security/rules/detectionRules' }
+        ($output -join "`n") | Should -Match 'auto-disabled by Defender and was left unchanged'
+        ($output -join "`n") | Should -Match '2026-07-13T12:00:00Z'
+        ($output -join "`n") | Should -Match 'queryTimeout'
     }
 }

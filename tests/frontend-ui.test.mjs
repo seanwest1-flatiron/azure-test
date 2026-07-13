@@ -155,11 +155,13 @@ test("wires the three non-interactive failed sign-ins card to the existing ROPC 
   assert.match(app, /bind\("run-failed-sign-in-three", "click", \(\) => handleAction\(\(\) => beginLab\("failedSignInThree"\)\)\)/);
 });
 
-test("places the dedicated failed sign-in detection lab after the three-attempt non-interactive lab", () => {
+test("places the failed sign-in detection toggle after the three-attempt non-interactive lab", () => {
   const threeAttemptCard = index.indexOf("<h2>Three non-interactive failed sign-ins</h2>");
-  const detectionCard = index.indexOf("<h2>Create failed sign-in detection</h2>");
+  const detectionCard = index.indexOf("<h2>Toggle failed sign-in detection</h2>");
   const browserCard = index.indexOf("<h2>Three browser failed sign-ins</h2>");
   assert.ok(threeAttemptCard >= 0 && detectionCard > threeAttemptCard && browserCard > detectionCard);
-  assert.match(app, /failedSignInDetection: \{[^}]*operation: "failedSignInDetection"[^}]*payloadPath: "payloads\/create-failed-sign-in-detection\.ps1"/);
+  assert.match(index, /Enables or disables the alert-only detection for repeated invalid-password sign-ins by Lisa Simpson\./);
+  assert.match(index, /id="run-failed-sign-in-detection"[^>]*>Toggle detection</);
+  assert.match(app, /failedSignInDetection: \{[^}]*operation: "failedSignInDetection"[^}]*payloadPath: "payloads\/create-failed-sign-in-detection\.ps1"[^}]*label: "Toggle failed sign-in detection"/);
   assert.match(app, /bind\("run-failed-sign-in-detection", "click", \(\) => handleAction\(\(\) => beginLab\("failedSignInDetection"\)\)\)/);
 });
