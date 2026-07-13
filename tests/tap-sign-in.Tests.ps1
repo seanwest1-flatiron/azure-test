@@ -14,9 +14,10 @@ Describe 'Lisa Simpson Temporary Access Pass sign-in payload' {
         $global:AfterPartyTapContainerBody = $null
         $global:AfterPartyTapResult = 'confirmed'
         $global:AfterPartyExistingTapMethods = @()
+        $global:AfterPartyTapCreationError = $false
         Mock Start-Sleep {}
         Mock Invoke-RestMethod {
-            param($Uri, $Method, $Body)
+            param($Uri, $Method, $Body, $StatusCodeVariable, $ResponseHeadersVariable)
             $uriText = [string]$Uri
             if ($uriText -like '*/version.json?nonce=*') { return [pscustomobject]@{ payloadVersion = 'tap-payload-version' } }
             if ($uriText -like '*/payloads/tenant-seed.json?version=*') {
@@ -41,6 +42,11 @@ Describe 'Lisa Simpson Temporary Access Pass sign-in payload' {
             }
             if ($Method -eq 'POST' -and $uriText -eq 'https://graph.microsoft.com/v1.0/users/lisa-id/authentication/temporaryAccessPassMethods') {
                 $global:AfterPartyTapBody = [string]$Body
+                if ($global:AfterPartyTapCreationError) {
+                    Set-Variable -Name $StatusCodeVariable -Value 400 -Scope Global
+                    Set-Variable -Name $ResponseHeadersVariable -Value @{ 'request-id' = 'graph-request-id'; Date = 'Mon, 13 Jul 2026 12:00:00 GMT' } -Scope Global
+                    return [pscustomobject]@{ error = [pscustomobject]@{ code = 'invalidRequest'; message = 'The supplied TAP lifetime is outside the policy range.' } }
+                }
                 return [pscustomobject]@{ id = 'tap-method-id'; temporaryAccessPass = $global:AfterPartyTap }
             }
             if ($Method -eq 'GET' -and $uriText -eq 'https://graph.microsoft.com/v1.0/users/lisa-id/authentication/temporaryAccessPassMethods') {
@@ -69,10 +75,13 @@ Describe 'Lisa Simpson Temporary Access Pass sign-in payload' {
         }
     }
 
-    It 'creates a one-time TAP for the tenant-relative Lisa identity and passes it only as an ACI secure value' {
+    It 'omits lifetime so the policy-compliant 60-minute tenant default applies and passes the TAP only as an ACI secure value' {
         $output = & $payloadPath -GraphAccessToken $graphAccessToken -TenantDomain 'student.onmicrosoft.com' -SubscriptionId 'subscription-id' -ResourceGroup 'after-test'
 
-        $global:AfterPartyTapBody | Should -Match '"lifetimeInMinutes"\s*:\s*10'
+        $tapPolicy = [pscustomobject]@{ minimumLifetimeInMinutes = 60; defaultLifetimeInMinutes = 60; maximumLifetimeInMinutes = 480 }
+        $tapPolicy.defaultLifetimeInMinutes | Should -BeGreaterOrEqual $tapPolicy.minimumLifetimeInMinutes
+        $tapPolicy.defaultLifetimeInMinutes | Should -BeLessOrEqual $tapPolicy.maximumLifetimeInMinutes
+        $global:AfterPartyTapBody | Should -Not -Match '"lifetimeInMinutes"'
         $global:AfterPartyTapBody | Should -Match '"isUsableOnce"\s*:\s*true'
         $container = $global:AfterPartyTapContainerBody | ConvertFrom-Json
         $environment = @($container.properties.containers[0].properties.environmentVariables)
@@ -102,5 +111,19 @@ Describe 'Lisa Simpson Temporary Access Pass sign-in payload' {
 
         Should -Invoke Invoke-RestMethod -Times 0 -ParameterFilter { $Method -eq 'POST' -and ([string]$Uri) -match '/temporaryAccessPassMethods$' }
         Should -Invoke Invoke-RestMethod -Times 0 -ParameterFilter { ([string]$Uri) -match 'Microsoft.ContainerInstance/containerGroups' }
+    }
+
+    It 'surfaces the real Graph error body and response metadata without exposing the access token' {
+        $global:AfterPartyTapCreationError = $true
+
+        $message = $null
+        try {
+            & $payloadPath -GraphAccessToken $graphAccessToken -TenantDomain 'student.onmicrosoft.com' -SubscriptionId 'subscription-id' -ResourceGroup 'after-test'
+        } catch { $message = $_.Exception.Message }
+
+        $message | Should -Match 'HTTP 400; code: invalidRequest; message: The supplied TAP lifetime is outside the policy range\.'
+        $message | Should -Match 'response body: .*"code":"invalidRequest"'
+        $message | Should -Match 'request-id: graph-request-id; date: Mon, 13 Jul 2026 12:00:00 GMT'
+        $message | Should -Not -Match [regex]::Escape($graphAccessToken)
     }
 }

@@ -56,6 +56,31 @@ function Invoke-Graph {
         $parameters.ContentType = 'application/json'
         $parameters.Body = $Body | ConvertTo-Json -Depth 12
     }
+    $invokeRestMethod = Get-Command Invoke-RestMethod
+    if ($invokeRestMethod.Parameters.ContainsKey('SkipHttpErrorCheck')) {
+        $responseVariableSuffix = [Guid]::NewGuid().ToString('N')
+        $statusVariable = "afterPartyGraphStatusCode$responseVariableSuffix"
+        $headersVariable = "afterPartyGraphResponseHeaders$responseVariableSuffix"
+        $parameters.SkipHttpErrorCheck = $true
+        $parameters.StatusCodeVariable = $statusVariable
+        $parameters.ResponseHeadersVariable = $headersVariable
+        $result = Invoke-RestMethod @parameters
+        $statusCode = [int](Get-Variable -Name $statusVariable -ValueOnly -ErrorAction SilentlyContinue)
+        if ($statusCode -ge 400) {
+            $code = [string]$result.error.code
+            $message = [string]$result.error.message
+            $responseBody = if ($null -eq $result) { '(empty)' } else { $result | ConvertTo-Json -Depth 12 -Compress }
+            $responseHeaders = Get-Variable -Name $headersVariable -ValueOnly -ErrorAction SilentlyContinue
+            $requestId = [string]$responseHeaders.'request-id'
+            $responseDate = [string]$responseHeaders.Date
+            $metadata = @()
+            if (-not [string]::IsNullOrWhiteSpace($requestId)) { $metadata += "request-id: $requestId" }
+            if (-not [string]::IsNullOrWhiteSpace($responseDate)) { $metadata += "date: $responseDate" }
+            $metadataText = if ($metadata.Count) { "; $($metadata -join '; ')" } else { '' }
+            throw "Microsoft Graph $Method $Path failed: HTTP $statusCode; code: $code; message: $message; response body: $responseBody$metadataText"
+        }
+        return $result
+    }
     try { return Invoke-RestMethod @parameters } catch { throw "Microsoft Graph $Method $Path failed: $(Get-HttpErrorDetail -ErrorRecord $_)" }
 }
 
@@ -120,7 +145,7 @@ $cleanupErrors = @()
 try {
     $existingTapMethods = @((Invoke-Graph -Method GET -Path "/users/$($user.id)/authentication/temporaryAccessPassMethods").value)
     if ($existingTapMethods.Count) { throw 'Lisa Simpson already has a Temporary Access Pass method. The lab did not replace or expose it.' }
-    $tap = Invoke-Graph -Method POST -Path "/users/$($user.id)/authentication/temporaryAccessPassMethods" -Body @{ lifetimeInMinutes = 10; isUsableOnce = $true }
+    $tap = Invoke-Graph -Method POST -Path "/users/$($user.id)/authentication/temporaryAccessPassMethods" -Body @{ isUsableOnce = $true }
     $tapId = [string]$tap.id
     $temporaryAccessPass = [string]$tap.temporaryAccessPass
     if ([string]::IsNullOrWhiteSpace($tapId) -or [string]::IsNullOrWhiteSpace($temporaryAccessPass)) { throw 'Microsoft Graph did not return a usable one-time Temporary Access Pass.' }
