@@ -22,7 +22,10 @@ Describe 'After Party bootstrap payload URL' {
         )))
         Mock Invoke-RestMethod {
             param($Uri)
-            if ($Uri -like '*/version.json?nonce=*') {
+            if ($Uri -like '*/deployment.json?nonce=*') {
+                return [pscustomobject]@{ commit = '0123456789abcdef0123456789abcdef01234567' }
+            }
+            if ($Uri -eq 'https://raw.githubusercontent.com/seanwest1-flatiron/azure-test/0123456789abcdef0123456789abcdef01234567/version.json') {
                 return [pscustomobject]@{ runnerVersion = '2026.07.12.1'; payloadVersion = '2026.07.12.1' }
             }
             if ($Uri -like '*api-version=2019-08-01') {
@@ -45,7 +48,7 @@ Describe 'After Party bootstrap payload URL' {
 
     It 'keeps the lab path before the version query string and logs the full URL' {
         $output = & $bootstrapPath -LabPath 'payloads/seed-tenant.ps1'
-        $expected = 'https://raw.githubusercontent.com/seanwest1-flatiron/azure-test/main/payloads/seed-tenant.ps1?version=2026.07.12.1'
+        $expected = 'https://raw.githubusercontent.com/seanwest1-flatiron/azure-test/0123456789abcdef0123456789abcdef01234567/payloads/seed-tenant.ps1?version=2026.07.12.1'
 
         $global:AfterPartyDownloadUri | Should -Be $expected
         ($output -contains "Resolved payload URL: $expected") | Should -Be $true

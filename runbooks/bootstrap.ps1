@@ -13,9 +13,14 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$installedRunnerVersion = '2026.07.13.6'
-$repositoryBase = 'https://raw.githubusercontent.com/seanwest1-flatiron/azure-test/main'
-$manifest = Invoke-RestMethod -Method GET -Uri "$repositoryBase/version.json?nonce=$([Guid]::NewGuid().ToString('N'))"
+$installedRunnerVersion = '2026.07.13.7'
+$deployment = Invoke-RestMethod -Method GET -Uri "https://seanwest1-flatiron.github.io/azure-test/deployment.json?nonce=$([Guid]::NewGuid().ToString('N'))" -Headers @{ 'Cache-Control' = 'no-cache' }
+$deployedCommit = [string]$deployment.commit
+if ($deployedCommit -notmatch '^[0-9a-f]{40}$') {
+    throw 'The After Party deployment manifest did not contain a valid deployed commit.'
+}
+$repositoryBase = "https://raw.githubusercontent.com/seanwest1-flatiron/azure-test/$deployedCommit"
+$manifest = Invoke-RestMethod -Method GET -Uri "$repositoryBase/version.json" -Headers @{ 'Cache-Control' = 'no-cache' }
 if ([string]::IsNullOrWhiteSpace([string]$manifest.payloadVersion)) {
     throw 'The After Party version manifest did not contain a payload version.'
 }
@@ -27,6 +32,7 @@ if ($labUri.Scheme -ne 'https' -or $labUri.Host -ne 'raw.githubusercontent.com')
 }
 
 Write-Output "Installed runner version: $installedRunnerVersion"
+Write-Output "Resolved deployed commit: $deployedCommit"
 Write-Output "Downloading current payload: $LabPath"
 Write-Output "Resolved payload URL: $($labUri.AbsoluteUri)"
 $labSource = (Invoke-WebRequest -Uri $labUri.AbsoluteUri -UseBasicParsing).Content
