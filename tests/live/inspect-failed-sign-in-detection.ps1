@@ -14,6 +14,32 @@ $payloadVersion = [Uri]::EscapeDataString([string]$manifest.payloadVersion)
 $baseline = Invoke-RestMethod -Method GET -Uri "$repositoryBase/payloads/tenant-seed.json?version=$payloadVersion"
 $definition = Invoke-RestMethod -Method GET -Uri "$repositoryBase/payloads/failed-sign-in-detection.json?version=$payloadVersion"
 
+function Get-TokenRoles {
+    param([string] $AccessToken)
+    $segments = $AccessToken.Split('.')
+    if ($segments.Count -lt 2) { return @() }
+    $encoded = $segments[1].Replace('-', '+').Replace('_', '/')
+    switch ($encoded.Length % 4) { 2 { $encoded += '==' } 3 { $encoded += '=' } }
+    try {
+        $claims = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($encoded)) | ConvertFrom-Json
+        return @($claims.roles)
+    } catch { return @() }
+}
+
+$tokenRoles = @(Get-TokenRoles -AccessToken $GraphAccessToken)
+if ($tokenRoles -notcontains 'ThreatHunting.Read.All') {
+    $freshToken = Invoke-RestMethod `
+        -Method GET `
+        -Uri ("{0}?resource={1}&api-version=2019-08-01" -f $env:IDENTITY_ENDPOINT, [Uri]::EscapeDataString('https://graph.microsoft.com/')) `
+        -Headers @{ 'X-IDENTITY-HEADER' = $env:IDENTITY_HEADER; Metadata = 'True' }
+    if ([string]::IsNullOrWhiteSpace([string]$freshToken.access_token)) { throw 'The managed identity endpoint did not return a fresh Graph token for live inspection.' }
+    $GraphAccessToken = [string]$freshToken.access_token
+    $tokenRoles = @(Get-TokenRoles -AccessToken $GraphAccessToken)
+}
+if ($tokenRoles -notcontains 'ThreatHunting.Read.All') {
+    throw "The live inspector Graph token did not contain ThreatHunting.Read.All. Present roles: $($tokenRoles -join ', ')."
+}
+
 function Invoke-GraphJson {
     param([string] $Method, [string] $Path, $Body)
     $parameters = @{
