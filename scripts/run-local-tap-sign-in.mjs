@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
-import { mkdir, writeFile } from "node:fs/promises";
+import { access, mkdir, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { ClientCertificateCredential } from "@azure/identity";
 import { chromium } from "playwright";
 import { runTapSignIn } from "../payloads/tap-sign-in-worker.mjs";
@@ -11,19 +12,30 @@ import { defaultHarnessConfigPath, loadHarnessConfig, runWithManagedTemporaryAcc
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(scriptDirectory, "..");
 
-function parseArguments(values) {
-  const result = { configPath: defaultHarnessConfigPath(), headless: false };
+export function parseArguments(values) {
+  const result = { configPath: defaultHarnessConfigPath(), headless: true };
   for (let index = 0; index < values.length; index += 1) {
     const value = values[index];
-    if (value === "--headless") result.headless = true;
+    if (value === "--headed") result.headless = false;
     else if (value === "--config" && values[index + 1]) result.configPath = resolve(values[++index]);
     else throw new Error(`Unknown or incomplete argument: ${value}`);
   }
   return result;
 }
 
+async function useAvailableUserLocalBrowserLibraries() {
+  if (process.platform !== "linux") return;
+  const architecture = process.arch === "arm64" ? "aarch64-linux-gnu" : "x86_64-linux-gnu";
+  const directory = resolve(homedir(), ".local", "share", "after-party", "playwright-libs", "usr", "lib", architecture);
+  try {
+    await access(directory);
+    process.env.LD_LIBRARY_PATH = [directory, process.env.LD_LIBRARY_PATH].filter(Boolean).join(":");
+  } catch { /* The normal Playwright system dependency installation needs no override. */ }
+}
+
 async function main() {
   const args = parseArguments(process.argv.slice(2));
+  await useAvailableUserLocalBrowserLibraries();
   const { config } = await loadHarnessConfig({ configPath: args.configPath, repositoryRoot });
   const runId = new Date().toISOString().replace(/[:.]/g, "-");
   const artifactDirectory = resolve(repositoryRoot, ".artifacts", "tap-local", runId);
@@ -72,7 +84,8 @@ async function main() {
   }
 }
 
-main().catch(error => {
+const isMain = process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url;
+if (isMain) main().catch(error => {
   console.error(error.message);
   process.exitCode = 1;
 });

@@ -137,7 +137,7 @@ export async function runWithManagedTemporaryAccessPass({
       userAlias: config.userAlias,
       temporaryAccessPass,
       capturePageOnFailure: true,
-      headless: false,
+      headless: true,
       maxPropagationAttempts: 3,
       ...browserOptions
     }, { signal });

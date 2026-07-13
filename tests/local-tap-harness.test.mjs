@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { pathIsInside, runWithManagedTemporaryAccessPass, validateHarnessConfig } from "../scripts/local-tap-harness.mjs";
+import { parseArguments } from "../scripts/run-local-tap-sign-in.mjs";
 
 const config = Object.freeze({
   tenantId: "11111111-1111-4111-8111-111111111111",
@@ -42,6 +43,12 @@ test("validates tenant-relative external configuration", () => {
   assert.throws(() => validateHarnessConfig({ ...config, certificatePath: "relative.pem" }), /absolute/);
 });
 
+test("runs headless by default and exposes an explicit headed debugging option", () => {
+  assert.equal(parseArguments([]).headless, true);
+  assert.equal(parseArguments(["--headed"]).headless, false);
+  assert.throws(() => parseArguments(["--headless"]), /Unknown/);
+});
+
 test("creates a single-use TAP, runs the shared sign-in, and deletes only that TAP", async () => {
   const graph = graphMock();
   const logs = [];
@@ -59,7 +66,7 @@ test("creates a single-use TAP, runs the shared sign-in, and deletes only that T
   assert.equal(result.result, "confirmed");
   assert.equal(received.temporaryAccessPass, "one-time-secret");
   assert.equal(received.clientId, config.signInClientId);
-  assert.equal(received.headless, false);
+  assert.equal(received.headless, true);
   assert.equal(JSON.stringify(logs).includes("one-time-secret"), false);
   assert.deepEqual(graph.calls.map(call => call.method), ["GET", "POST", "DELETE"]);
   assert.match(graph.calls[1].body, /"isUsableOnce":true/);

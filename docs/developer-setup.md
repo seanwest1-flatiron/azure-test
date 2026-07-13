@@ -103,7 +103,7 @@ This is a live tenant operation. Run it only after the one-time configuration an
 npm run tap:local
 ```
 
-Use `npm run tap:local -- --headless` only after the headed flow is stable. A run performs these checkpoints:
+The harness is headless by default. Use `npm run tap:local -- --headed` when a visible browser is useful for debugging. A run performs these checkpoints:
 
 1. Obtain an app-only Graph token with the external certificate.
 2. Confirm Lisa has no existing TAP; stop without changing it if one exists.
@@ -118,7 +118,7 @@ If the process is killed, the host crashes, or cleanup reports an error, go to *
 
 ## Final ACI and live-site validation
 
-After the local headed test passes:
+After the local test passes:
 
 1. Push the tested shared worker and allow the normal GitHub Pages deployment to complete.
 2. Verify the live site's uncached deployment metadata reports the expected commit and payload version.
