@@ -68,7 +68,8 @@ Describe 'Failed sign-in custom detection payload' {
             $Body -match 'ClusterWindowStart \.\. ClusterWindowStart \+ 60m' -and
             $Body -match 'FailureCount >= 3' -and
             $Body -match 'arg_max\(Timestamp, ReportId\)' -and
-            $Body -match 'top 1 by ClusterWindowEnd desc, ClusterWindowStart desc' -and
+            $Body -match 'sort by ClusterWindowEnd desc, ClusterWindowStart desc' -and
+            $Body -match 'take 1' -and
             $Body -match 'project Timestamp, ReportId, AccountUpn, ApplicationId, FailureCount' -and
             $Body -match '"entityMappings"\s*:\s*\{' -and
             $Body -match '"accounts"\s*:\s*\[' -and

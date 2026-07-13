@@ -145,7 +145,8 @@ MatchingFailures
 | where Timestamp between (ClusterWindowStart .. ClusterWindowStart + $([int]$definition.windowMinutes)m)
 | summarize FailureCount = count(), CorrelationIds = make_set(CorrelationId, $([int]$definition.threshold)), ClusterWindowEnd = max(Timestamp), arg_max(Timestamp, ReportId) by AccountUpn, ApplicationId, ClusterWindowStart
 | where FailureCount >= $([int]$definition.threshold)
-| top 1 by ClusterWindowEnd desc, ClusterWindowStart desc
+| sort by ClusterWindowEnd desc, ClusterWindowStart desc
+| take 1
 | project Timestamp, ReportId, AccountUpn, ApplicationId, FailureCount, ClusterWindowStart, ClusterWindowEnd, CorrelationIds
 "@.Trim()
 $alertTemplate = @{
