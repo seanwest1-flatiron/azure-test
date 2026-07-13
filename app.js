@@ -15,9 +15,10 @@
   const JOB_POLL_INTERVAL_MS = 1000;
   const apiVersions = Object.freeze({ resources: "2021-04-01", deployments: "2022-09-01", automation: automation.API_VERSION });
   const el = Object.fromEntries([
-    "configuration-warning", "status", "sign-in", "sign-out", "account", "authorization", "authorize-azure",
-    "subscription", "resource-group", "install", "run", "run-file-share", "run-email-triage",
-    "run-customer-payment-export", "run-external-email", "run-tenant-seed", "run-failed-sign-in", "run-failed-sign-in-three", "run-browser-failed-sign-in", "run-browser-failed-sign-in-three", "email-job-status", "file-share-job-status", "message-batch-job-status", "payment-export-job-status", "external-email-job-status", "tenant-seed-job-status", "failed-sign-in-job-status", "failed-sign-in-three-job-status", "browser-failed-sign-in-job-status", "browser-failed-sign-in-three-job-status", "diagnostics"
+    "configuration-warning", "status", "sign-in", "sign-out", "account-menu", "account-button", "account-name", "account-username", "account-tenant", "account-environment",
+    "environment-chooser", "environment-chooser-title", "environment-chooser-message", "environment-cancel", "environment-continue", "subscription-field", "resource-group-field",
+    "subscription", "resource-group", "run", "run-file-share", "run-email-triage",
+    "run-customer-payment-export", "run-external-email", "run-failed-sign-in", "run-failed-sign-in-three", "run-browser-failed-sign-in", "run-browser-failed-sign-in-three", "email-job-status", "file-share-job-status", "message-batch-job-status", "payment-export-job-status", "external-email-job-status", "failed-sign-in-job-status", "failed-sign-in-three-job-status", "browser-failed-sign-in-job-status", "browser-failed-sign-in-three-job-status", "diagnostics"
   ].map(id => [id, document.getElementById(id)]));
   let msalClient;
   let account;
@@ -44,6 +45,11 @@
   function setStatus(message, kind = "") {
     el.status.textContent = message;
     el.status.className = `notice ${kind}`.trim();
+    el.status.hidden = !message;
+  }
+
+  function clearStatus() {
+    setStatus("");
   }
 
   function explainError(error) {
@@ -73,16 +79,6 @@
       pre.textContent = output.length > 4000 ? `${output.slice(-4000)}\n…output truncated` : output;
       element.append(pre);
     }
-  }
-
-  function setAuthorizationSummary() {
-    if (!account) {
-      el.authorization.textContent = "Azure and Microsoft Graph access has not been authorized for an operation yet.";
-      return;
-    }
-    const arm = authorization.arm ? "authorized" : "not yet authorized";
-    const graph = authorization.graph ? "authorized" : "not yet authorized";
-    el.authorization.textContent = `Signed in. Azure Resource Manager is ${arm}; Microsoft Graph admin access is ${graph}.`;
   }
 
   function formSnapshot() {
@@ -115,9 +111,19 @@
     return null;
   }
 
+  function runnerSummary() {
+    const current = currentRunner();
+    if (current) return current;
+    const stored = getStoredRunner();
+    const selectedEnvironmentMatches = (!el.subscription.value || stored?.subscriptionId === el.subscription.value)
+      && (!el["resource-group"].value || stored?.resourceGroup === el["resource-group"].value);
+    return stored?.tenantId === account?.tenantId && selectedEnvironmentMatches ? stored : null;
+  }
+
   function storeRunner(runner) {
     activeRunner = runner;
     localStorage.setItem(RUNNER_STORAGE_KEY, JSON.stringify(runner));
+    setAccountSummary();
     setDiagnostics();
   }
 
@@ -127,7 +133,7 @@
 
   function setDiagnostics() {
     if (!el.diagnostics) return;
-    const runner = currentRunner();
+    const runner = runnerSummary();
     const runnerVersion = runner?.runnerVersion || "not detected";
     const baselineVersion = runner?.tenantBaselineVersion || "not applied";
     const deployment = deploymentInfo?.unavailable
@@ -135,7 +141,24 @@
       : deploymentInfo
         ? ` · Deployed commit: ${deploymentInfo.commit.slice(0, 12)} · Deployment time: ${new Date(deploymentInfo.deployedAt).toLocaleString()}`
         : " · GitHub Pages deployment: checking…";
-    el.diagnostics.textContent = `Site: ${buildVersion("siteVersion")} · Desired runner: ${buildVersion("runnerVersion")} · Detected runner: ${runnerVersion} · Desired baseline: ${buildVersion("tenantBaselineVersion")} · Applied baseline: ${baselineVersion}${deployment}`;
+    const subscription = runner?.subscriptionId || el.subscription.value || "not selected";
+    const resourceGroup = runner?.resourceGroup || el["resource-group"].value || "not selected";
+    const automationAccount = runner?.automationAccountName || "not detected";
+    el.diagnostics.textContent = `Site: ${buildVersion("siteVersion")} · Desired runner: ${buildVersion("runnerVersion")} · Detected runner: ${runnerVersion} · Desired baseline: ${buildVersion("tenantBaselineVersion")} · Applied baseline: ${baselineVersion} · Subscription: ${subscription} · Resource group: ${resourceGroup} · Automation account: ${automationAccount}${deployment}`;
+  }
+
+  function setAccountSummary() {
+    if (!account) return;
+    const displayName = account.name || account.username;
+    const runner = runnerSummary();
+    const subscriptionLabel = el.subscription.selectedOptions?.[0]?.textContent || runner?.subscriptionId;
+    el["account-button"].textContent = displayName;
+    el["account-name"].textContent = account.name || "Microsoft account";
+    el["account-username"].textContent = account.username || "";
+    el["account-tenant"].textContent = account.tenantId ? `Tenant: ${account.tenantId}` : "";
+    el["account-environment"].textContent = runner
+      ? `${subscriptionLabel || runner.subscriptionId} · ${runner.resourceGroup} · ${runner.automationAccountName}`
+      : "The environment will be selected when a lab starts.";
   }
 
   async function loadDeploymentInfo() {
@@ -153,22 +176,14 @@
 
   function refreshControls() {
     const signedIn = Boolean(account);
-    const environmentSelected = Boolean(el.subscription.value && el["resource-group"].value);
-    const ready = Boolean(currentRunner());
     el["sign-in"].hidden = signedIn;
-    el["sign-out"].hidden = !signedIn;
-    el["authorize-azure"].disabled = busy || !signedIn;
-    el.subscription.disabled = busy || !signedIn;
-    el["resource-group"].disabled = busy || !signedIn || !el.subscription.value;
-    el.install.disabled = busy || !signedIn || !environmentSelected;
-    el.install.textContent = ready ? "Repair or update environment" : "Set up environment";
+    el["account-menu"].hidden = !signedIn;
     Object.entries({
       sendEmail: el.run,
       shareOneDriveFile: el["run-file-share"],
       sendMessageBatch: el["run-email-triage"],
       sendCustomerPaymentExport: el["run-customer-payment-export"],
       sendExternalEmail: el["run-external-email"],
-      seedTenant: el["run-tenant-seed"],
       failedSignIn: el["run-failed-sign-in"],
       failedSignInThree: el["run-failed-sign-in-three"],
       browserFailedSignIn: el["run-browser-failed-sign-in"],
@@ -176,14 +191,13 @@
     }).forEach(([operation, button]) => {
       if (button) button.disabled = busy || activeOperations.size > 0;
     });
-    el["run-tenant-seed"].disabled = busy || !signedIn || !ready || activeOperations.size > 0;
+    setAccountSummary();
     setDiagnostics();
   }
 
   function noteAuthorized(scopes) {
     if (scopes.includes(ARM_SCOPE)) authorization.arm = true;
     if (scopes.some(scope => GRAPH_SCOPES.includes(scope))) authorization.graph = true;
-    setAuthorizationSummary();
   }
 
   async function token(scopes, operation) {
@@ -240,6 +254,37 @@
     select.replaceChildren(new Option(placeholder, ""), ...items.map(item => new Option(item[labelKey], item[valueKey])));
   }
 
+  function chooseEnvironmentOption({ type, title, message }) {
+    const dialog = el["environment-chooser"];
+    const select = type === "subscription" ? el.subscription : el["resource-group"];
+    el["environment-chooser-title"].textContent = title;
+    el["environment-chooser-message"].textContent = message;
+    el["subscription-field"].hidden = type !== "subscription";
+    el["resource-group-field"].hidden = type !== "resourceGroup";
+    el["environment-continue"].disabled = !select.value;
+
+    return new Promise((resolve, reject) => {
+      const finish = value => {
+        el["environment-continue"].removeEventListener("click", continueChoice);
+        el["environment-cancel"].removeEventListener("click", cancelChoice);
+        select.removeEventListener("change", updateChoice);
+        dialog.removeEventListener("cancel", cancelDialog);
+        if (dialog.open) dialog.close();
+        value ? resolve(value) : reject(new Error("Environment selection was canceled."));
+      };
+      const continueChoice = () => { if (select.value) finish(select.value); };
+      const cancelChoice = () => finish("");
+      const cancelDialog = event => { event.preventDefault(); finish(""); };
+      const updateChoice = () => { el["environment-continue"].disabled = !select.value; };
+      el["environment-continue"].addEventListener("click", continueChoice);
+      el["environment-cancel"].addEventListener("click", cancelChoice);
+      select.addEventListener("change", updateChoice);
+      dialog.addEventListener("cancel", cancelDialog);
+      dialog.showModal();
+      select.focus();
+    });
+  }
+
   function runnerName() {
     return `after-party-${account.tenantId}`;
   }
@@ -249,12 +294,16 @@
     const result = await arm(`/subscriptions?api-version=${apiVersions.resources}`, {}, operation);
     const subscriptions = (result.value || []).filter(item => item.state === "Enabled");
     fillSelect(el.subscription, subscriptions, "Choose a subscription", "subscriptionId", "displayName");
+    if (!subscriptions.length) {
+      setStatus("No enabled Azure subscriptions are available to this account.", "error");
+      return subscriptions;
+    }
     if (continueAutomatically && subscriptions.length === 1) {
       el.subscription.value = subscriptions[0].subscriptionId;
       await loadResourceGroups();
-      return;
+      return subscriptions;
     }
-    setStatus(subscriptions.length ? "Choose the subscription for this environment." : "No enabled Azure subscriptions are available to this account.", subscriptions.length ? "success" : "error");
+    return subscriptions;
   }
 
   async function loadResourceGroups(operation = "loadResourceGroups", continueAutomatically = true) {
@@ -267,11 +316,16 @@
     const result = await arm(`/subscriptions/${encodeURIComponent(subscriptionId)}/resourcegroups?api-version=${apiVersions.resources}`, {}, operation);
     const groups = result.value || [];
     fillSelect(el["resource-group"], groups, "Choose a resource group", "name", "name");
+    if (!groups.length) {
+      setStatus("No Azure resource groups are available in this subscription.", "error");
+      return groups;
+    }
     if (continueAutomatically && groups.length === 1) {
       el["resource-group"].value = groups[0].name;
-      return await discoverRunner(operation);
+      await discoverRunner(operation);
     }
     refreshControls();
+    return groups;
   }
 
   async function discoverRunner(operation = "discoverRunner") {
@@ -485,7 +539,7 @@
     const operation = "seedTenant";
     if (activeOperations.has(operation)) throw new Error("Tenant preparation is already in progress.");
     activeOperations.add(operation);
-    const statusElement = el["tenant-seed-job-status"];
+    const statusElement = prerequisiteStatusElement;
     const jobId = crypto.randomUUID();
     try {
       setJobStatus(statusElement, `Tenant preparation: queued… Job ID: ${jobId}`, "queued");
@@ -500,20 +554,40 @@
   }
 
   async function restoreOrSelectEnvironment(lab) {
-    if (el.subscription.value && el["resource-group"].value) return;
+    if (el.subscription.value && el["resource-group"].value && currentRunner()) return;
     const stored = getStoredRunner();
+    const previousSubscription = el.subscription.value;
     await loadSubscriptions(lab.operation, false);
     const subscriptionOptions = Array.from(el.subscription.options).filter(option => option.value);
     const resumedSubscription = subscriptionOptions.some(option => option.value === lab.form?.subscriptionId) ? lab.form.subscriptionId : "";
     const storedSubscription = stored?.tenantId === account.tenantId && subscriptionOptions.some(option => option.value === stored.subscriptionId) ? stored.subscriptionId : "";
-    el.subscription.value = resumedSubscription || storedSubscription || (subscriptionOptions.length === 1 ? subscriptionOptions[0].value : el.subscription.value);
-    if (!el.subscription.value) throw new Error("Choose the Azure subscription in Environment details, then select the lab again.");
+    const currentSubscription = subscriptionOptions.some(option => option.value === previousSubscription) ? previousSubscription : "";
+    el.subscription.value = resumedSubscription || storedSubscription || currentSubscription || (subscriptionOptions.length === 1 ? subscriptionOptions[0].value : "");
+    if (!el.subscription.value) {
+      if (!subscriptionOptions.length) throw new Error("No enabled Azure subscriptions are available to this account.");
+      await chooseEnvironmentOption({
+        type: "subscription",
+        title: "Choose an Azure subscription",
+        message: `${lab.label} will continue automatically after you choose where After Party should run.`
+      });
+    }
+    const previousGroup = el["resource-group"].value;
     await loadResourceGroups(lab.operation, false);
     const groupOptions = Array.from(el["resource-group"].options).filter(option => option.value);
     const resumedGroup = groupOptions.some(option => option.value === lab.form?.resourceGroup) ? lab.form.resourceGroup : "";
-    const storedGroup = stored?.subscriptionId === el.subscription.value && groupOptions.some(option => option.value === stored.resourceGroup) ? stored.resourceGroup : "";
-    el["resource-group"].value = resumedGroup || storedGroup || (groupOptions.length === 1 ? groupOptions[0].value : el["resource-group"].value);
-    if (!el["resource-group"].value) throw new Error("Choose the Azure resource group in Environment details, then select the lab again.");
+    const storedGroup = stored?.tenantId === account.tenantId && stored.subscriptionId === el.subscription.value && groupOptions.some(option => option.value === stored.resourceGroup) ? stored.resourceGroup : "";
+    const currentGroup = groupOptions.some(option => option.value === previousGroup) ? previousGroup : "";
+    el["resource-group"].value = resumedGroup || storedGroup || currentGroup || (groupOptions.length === 1 ? groupOptions[0].value : "");
+    if (!el["resource-group"].value) {
+      if (!groupOptions.length) throw new Error("No Azure resource groups are available in this subscription.");
+      await chooseEnvironmentOption({
+        type: "resourceGroup",
+        title: "Choose an Azure resource group",
+        message: `${lab.label} will continue automatically after you choose the resource group for After Party.`
+      });
+    }
+    setAccountSummary();
+    setDiagnostics();
   }
 
   async function beginLab(operation, form) {
@@ -527,7 +601,11 @@
       const result = await prerequisiteFlow.start(lab);
       if (result?.duplicate) setJobStatus(el[lab.statusId], `${lab.label} is already waiting or running.`);
     } catch (error) {
-      if (error !== redirecting) setJobStatus(el[lab.statusId], `${lab.label}: prerequisites did not complete.`, "error", explainError(error));
+      if (error !== redirecting) {
+        clearStatus();
+        setJobStatus(el[lab.statusId], `${lab.label}: prerequisites did not complete.`, "error", explainError(error));
+        if (error && typeof error === "object") error.afterPartyLabReported = true;
+      }
       throw error;
     } finally {
       prerequisiteStatusElement = null;
@@ -538,9 +616,7 @@
   async function signedIn(nextAccount) {
     account = nextAccount;
     msalClient.setActiveAccount(account);
-    el.account.textContent = `${account.name || account.username} (${account.tenantId})`;
     refreshControls();
-    setAuthorizationSummary();
   }
 
   async function restoreEnvironment(form = {}) {
@@ -589,7 +665,7 @@
       runnerVersion: () => buildVersion("runnerVersion"),
       tenantBaselineVersion: () => buildVersion("tenantBaselineVersion"),
       progress: message => {
-        setStatus("Environment check in progress.");
+        if (message === "Starting lab…") clearStatus();
         if (prerequisiteStatusElement) setJobStatus(prerequisiteStatusElement, message, "queued");
       },
       retryOptions: { attempts: 2 }
@@ -616,15 +692,15 @@
       await signedIn(cachedAccount);
       const pending = takePendingOperation();
       if (pending && redirectResult) await resumePendingOperation(pending);
-      else setStatus("Signed in. Choose an Azure action when you are ready to authorize it.", "success");
+      else clearStatus();
     } else {
       takePendingOperation();
-      setStatus("Ready to sign in.");
+      clearStatus();
     }
   }
 
   async function handleAction(action) {
-    try { await action(); } catch (error) { if (error !== redirecting) setStatus(explainError(error), "error"); }
+    try { await action(); } catch (error) { if (error !== redirecting && !error?.afterPartyLabReported) setStatus(explainError(error), "error"); }
   }
 
   function bind(id, event, handler) {
@@ -638,22 +714,15 @@
   }));
   bind("sign-out", "click", () => {
     sessionStorage.removeItem(PENDING_OPERATION_KEY);
+    el["account-menu"].open = false;
     return msalClient.logoutRedirect({ account });
   });
-  bind("authorize-azure", "click", () => handleAction(() => loadSubscriptions()));
-  bind("subscription", "change", () => handleAction(() => loadResourceGroups()));
-  bind("resource-group", "change", () => handleAction(() => discoverRunner()));
   bind("install", "click", () => handleAction(installRunner));
   bind("run", "click", () => handleAction(() => beginLab("sendEmail")));
   bind("run-file-share", "click", () => handleAction(() => beginLab("shareOneDriveFile")));
   bind("run-email-triage", "click", () => handleAction(() => beginLab("sendMessageBatch")));
   bind("run-customer-payment-export", "click", () => handleAction(() => beginLab("sendCustomerPaymentExport")));
   bind("run-external-email", "click", () => handleAction(() => beginLab("sendExternalEmail")));
-  bind("run-tenant-seed", "click", () => handleAction(async () => {
-    setBusy(true);
-    try { await prepareTenantBaseline({ operation: "seedTenant", label: "Tenant preparation" }, currentRunner()); }
-    finally { setBusy(false); }
-  }));
   bind("run-failed-sign-in", "click", () => handleAction(() => beginLab("failedSignIn")));
   bind("run-failed-sign-in-three", "click", () => handleAction(() => beginLab("failedSignInThree")));
   bind("run-browser-failed-sign-in", "click", () => handleAction(() => beginLab("browserFailedSignIn")));

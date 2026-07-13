@@ -29,15 +29,55 @@ test("hides the application until the versioned stylesheet loads and reveals loa
   assert.match(index, /body > main \{ visibility: hidden; \}/);
   assert.match(index, /await addStylesheet\(`styles\.css\?v=\$\{version\}`\);\s*document\.documentElement\.classList\.add\("styles-ready"\)/);
   assert.match(index, /showLoaderError[\s\S]*classList\.add\("styles-failed"\)/);
+  assert.match(index, /showLoaderError[\s\S]*status\.hidden = false/);
   assert.match(index, /html\.styles-failed #status/);
 });
 
-test("uses one compact global status and keeps detailed prerequisite progress on the selected lab", () => {
+test("keeps the global status quiet when idle and progress on the selected lab", () => {
   assert.equal((index.match(/id="status"/g) || []).length, 1);
   assert.doesNotMatch(index, /id="environment-status"/);
   assert.doesNotMatch(app, /environment-status/);
-  assert.match(app, /setStatus\("Environment check in progress\."\)/);
+  assert.match(index, /id="status"[^>]*hidden/);
+  assert.doesNotMatch(app, /Ready to sign in|Environment check in progress/);
+  assert.match(app, /else clearStatus\(\)/);
   assert.match(app, /setJobStatus\(prerequisiteStatusElement, message, "queued"\)/);
+  assert.match(app, /error\.afterPartyLabReported = true/);
+  assert.match(app, /!error\?\.afterPartyLabReported/);
+});
+
+test("puts authentication in a responsive account control", () => {
+  assert.match(index, /<header class="site-header">[\s\S]*?id="sign-in"[\s\S]*?Sign in with Microsoft/);
+  assert.match(index, /<details id="account-menu" class="account-menu" hidden>[\s\S]*?id="account-button"[\s\S]*?id="account-environment"[\s\S]*?id="sign-out"/);
+  assert.match(app, /el\["account-button"\]\.textContent = displayName/);
+  assert.match(app, /el\["account-menu"\]\.hidden = !signedIn/);
+  assert.match(styles, /\.account-control \{ position: relative/);
+  assert.match(styles, /button:focus-visible, summary:focus-visible, select:focus-visible/);
+  assert.match(styles, /@media \(max-width: 620px\)[\s\S]*?\.site-header \{[^}]*flex-direction: column/);
+});
+
+test("uses a transient environment chooser and removes manual setup controls", () => {
+  assert.match(index, /<dialog id="environment-chooser"[^>]*aria-labelledby="environment-chooser-title"[^>]*aria-describedby="environment-chooser-message"/);
+  assert.match(index, /id="subscription-field"[\s\S]*?id="subscription"[\s\S]*?id="resource-group-field" hidden[\s\S]*?id="resource-group"/);
+  assert.doesNotMatch(index, /Environment details|Authorize Azure and load subscriptions|Repair or update environment|Reapply tenant baseline/);
+  assert.doesNotMatch(index, /id="authorize-azure"|id="install"|id="run-tenant-seed"/);
+  assert.match(app, /storedSubscription[\s\S]*?subscriptionOptions\.length === 1[\s\S]*?await chooseEnvironmentOption/);
+  assert.match(app, /storedGroup[\s\S]*?groupOptions\.length === 1[\s\S]*?await chooseEnvironmentOption/);
+  assert.match(app, /will continue automatically after you choose/);
+  assert.doesNotMatch(app, /select the lab again/);
+});
+
+test("keeps read-only environment diagnostics in closed technical details", () => {
+  assert.match(index, /<details class="technical-details">[\s\S]*?<summary>Technical details<\/summary>[\s\S]*?id="diagnostics"/);
+  assert.doesNotMatch(index, /<details class="technical-details" open/);
+  for (const label of ["Site", "Desired runner", "Detected runner", "Desired baseline", "Applied baseline", "Subscription", "Resource group", "Automation account", "Deployed commit", "Deployment time"]) {
+    assert.match(app, new RegExp(`${label}:`));
+  }
+});
+
+test("redirect completion still resumes the originally selected lab", () => {
+  assert.match(app, /savePendingOperation\(lab\.operation\)[\s\S]*?loginRedirect/);
+  assert.match(app, /if \(pending && redirectResult\) await resumePendingOperation\(pending\)/);
+  assert.match(app, /if \(labs\[pending\.operation\]\) return await beginLab\(pending\.operation, pending\.form\)/);
 });
 
 test("keeps the lab spinner animated while prerequisite stages continue", async () => {
