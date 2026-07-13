@@ -21,3 +21,7 @@ Department groups are Microsoft 365 groups. UPNs use the stable pattern `<alias>
 | Security | Homer Simpson (`homer.simpson@<tenant-domain>`), Marge Simpson (`marge.simpson@<tenant-domain>`), Lisa Simpson (`lisa.simpson@<tenant-domain>`), Bart Simpson (`bart.simpson@<tenant-domain>`) |
 | Finance | Rachel Green (`rachel.green@<tenant-domain>`), Monica Geller (`monica.geller@<tenant-domain>`), Chandler Bing (`chandler.bing@<tenant-domain>`), Ross Geller (`ross.geller@<tenant-domain>`) |
 | Human Resources | Jerry Seinfeld (`jerry.seinfeld@<tenant-domain>`), Elaine Benes (`elaine.benes@<tenant-domain>`), George Costanza (`george.costanza@<tenant-domain>`), Cosmo Kramer (`cosmo.kramer@<tenant-domain>`) |
+
+## Account password policy
+
+The West family accounts are persistent identities whose passwords should not be changed by labs unless explicitly requested. Other seeded persona accounts are disposable lab identities; labs may reset their passwords when needed and should not assume those passwords remain stable.
