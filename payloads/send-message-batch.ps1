@@ -12,9 +12,9 @@ $users = @("kobe@$TenantDomain", "cory@$TenantDomain")
 $batchId = [Guid]::NewGuid().ToString()
 $reportingGuide = 'https://learn.microsoft.com/en-us/defender-office-365/submissions-outlook-report-messages'
 $scenarios = @(
-    @{ Name = 'Correspondence'; Count = 60; SubjectPrefix = 'Quarterly account update'; Body = 'Please review the account update and reply if anything needs correction.' },
-    @{ Name = 'Nonessential'; Count = 25; SubjectPrefix = 'Subscription and service notice'; Body = 'This message contains an informational service notice.' },
-    @{ Name = 'Account notice'; Count = 15; SubjectPrefix = 'Action required: account review'; Body = "Please review the account information at $reportingGuide" }
+    @{ Name = 'Correspondence'; Count = 6; SubjectPrefix = 'Quarterly account update'; Body = 'Please review the account update and reply if anything needs correction.' },
+    @{ Name = 'Nonessential'; Count = 3; SubjectPrefix = 'Subscription and service notice'; Body = 'This message contains an informational service notice.' },
+    @{ Name = 'Account notice'; Count = 1; SubjectPrefix = 'Action required: account review'; Body = "Please review the account information at $reportingGuide" }
 )
 
 function Send-GraphMailWithRetry {
@@ -49,7 +49,7 @@ foreach ($scenario in $scenarios) {
         $message = @{
             subject = '{0} {1:D3} [{2}]' -f $scenario.SubjectPrefix, $sequence, $batchId
             importance = $importance
-            body = @{ contentType = 'Text'; content = "$($scenario.Body)`n`nBatch: $batchId`nMessage: $sequence of 100" }
+            body = @{ contentType = 'Text'; content = "$($scenario.Body)`n`nBatch: $batchId`nMessage: $sequence of 10" }
             toRecipients = @(@{ emailAddress = @{ address = $recipient } })
             internetMessageHeaders = @(
                 @{ name = 'x-after-party-workflow'; value = 'message-batch' },
@@ -71,8 +71,8 @@ foreach ($scenario in $scenarios) {
         }
 
         Send-GraphMailWithRetry -Sender $sender -Message $message -Headers $headers
-        if ($sequence % 10 -eq 0) { Write-Output "Accepted $sequence of 100 messages." }
+        if ($sequence % 10 -eq 0) { Write-Output "Accepted $sequence of 10 messages." }
     }
 }
 
-Write-Output "Message batch complete. Batch ID: $batchId"
+Write-Output "Message batch complete. 10 messages accepted. Batch ID: $batchId"

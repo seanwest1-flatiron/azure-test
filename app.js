@@ -279,6 +279,7 @@
         select.removeEventListener("change", updateChoice);
         dialog.removeEventListener("cancel", cancelDialog);
         if (dialog.open) dialog.close();
+        dialog.hidden = true;
         value ? resolve(value) : reject(new Error("Environment selection was canceled."));
       };
       const continueChoice = () => { if (select.value) finish(select.value); };
@@ -289,6 +290,7 @@
       el["environment-cancel"].addEventListener("click", cancelChoice);
       select.addEventListener("change", updateChoice);
       dialog.addEventListener("cancel", cancelDialog);
+      dialog.hidden = false;
       dialog.showModal();
       select.focus();
     });
@@ -726,6 +728,15 @@
     sessionStorage.removeItem(PENDING_OPERATION_KEY);
     el["account-menu"].open = false;
     return msalClient.logoutRedirect({ account });
+  });
+  document.addEventListener("keydown", event => {
+    if (event.key !== "Escape" || !el["account-menu"].open) return;
+    event.preventDefault();
+    el["account-menu"].open = false;
+    el["account-button"].focus();
+  });
+  document.addEventListener("click", event => {
+    if (el["account-menu"].open && !el["account-menu"].contains(event.target)) el["account-menu"].open = false;
   });
   bind("install", "click", () => handleAction(installRunner));
   bind("run", "click", () => handleAction(() => beginLab("sendEmail")));

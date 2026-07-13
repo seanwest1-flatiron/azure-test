@@ -71,8 +71,24 @@ test("puts authentication in a responsive account control", () => {
   assert.match(styles, /@media \(max-width: 620px\)[\s\S]*?\.site-header \{[^}]*flex-direction: column/);
 });
 
+test("uses the revised concise header and dismissible account menu", () => {
+  assert.match(index, /<title>After Party Labs \(WIP\)<\/title>/);
+  assert.match(index, /<h1>After Party Labs \(WIP\)<\/h1>/);
+  assert.doesNotMatch(index, /class="eyebrow"|Choose a lab\./);
+  assert.match(app, /document\.addEventListener\("keydown", event => \{[\s\S]*?event\.key !== "Escape"[\s\S]*?el\["account-menu"\]\.open = false[\s\S]*?el\["account-button"\]\.focus\(\)/);
+  assert.match(app, /document\.addEventListener\("click", event => \{[\s\S]*?!el\["account-menu"\]\.contains\(event\.target\)[\s\S]*?el\["account-menu"\]\.open = false/);
+});
+
+test("describes the ten-message batch and keeps its chooser hidden until needed", () => {
+  assert.match(index, /Sends 10 internal messages\./);
+  assert.doesNotMatch(index, /Sends 100 internal messages\./);
+  assert.match(index, /<dialog id="environment-chooser" hidden/);
+  assert.match(app, /dialog\.hidden = false;\s*dialog\.showModal\(\)/);
+  assert.match(app, /if \(dialog\.open\) dialog\.close\(\);\s*dialog\.hidden = true/);
+});
+
 test("uses a transient environment chooser and removes manual setup controls", () => {
-  assert.match(index, /<dialog id="environment-chooser"[^>]*aria-labelledby="environment-chooser-title"[^>]*aria-describedby="environment-chooser-message"/);
+  assert.match(index, /<dialog id="environment-chooser" hidden[^>]*aria-labelledby="environment-chooser-title"[^>]*aria-describedby="environment-chooser-message"/);
   assert.match(index, /id="subscription-field"[\s\S]*?id="subscription"[\s\S]*?id="resource-group-field" hidden[\s\S]*?id="resource-group"/);
   assert.doesNotMatch(index, /Environment details|Authorize Azure and load subscriptions|Repair or update environment|Reapply tenant baseline/);
   assert.doesNotMatch(index, /id="authorize-azure"|id="install"|id="run-tenant-seed"/);

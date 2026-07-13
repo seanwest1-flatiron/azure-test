@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Cache-Control" content="no-cache">
-  <title>After Party Labs</title>
+  <title>After Party Labs (WIP)</title>
   <style id="critical-loading-style">
     html { min-height: 100%; background: #0b1020; color-scheme: dark; }
     body { min-height: 100vh; margin: 0; background: #0b1020; color: #f5f7ff; font-family: system-ui, sans-serif; }
@@ -21,8 +21,7 @@
   <main>
     <header class="site-header">
       <div>
-        <p class="eyebrow">After Party</p>
-        <h1>After Party Labs</h1>
+        <h1>After Party Labs (WIP)</h1>
       </div>
       <div class="account-control">
         <button id="sign-in" class="secondary account-sign-in" type="button">Sign in with Microsoft</button>
@@ -38,8 +37,6 @@
         </details>
       </div>
     </header>
-    <p class="lede">Choose a lab. After Party checks sign-in, the reusable environment, and the tenant baseline before it starts.</p>
-
     <div id="configuration-warning" class="notice warning" hidden></div>
     <div id="status" class="notice global-status" role="status" aria-live="polite" hidden></div>
 
@@ -59,7 +56,7 @@
 
     <section class="card">
       <div class="section-heading"><div><span class="step">3</span><h2>Send message batch</h2></div></div>
-      <p>Sends 100 internal messages. Some include text attachments and account-status notices.</p>
+      <p>Sends 10 internal messages. Some include text attachments and account-status notices.</p>
       <button id="run-email-triage" type="button" disabled>Send message batch</button>
       <div id="message-batch-job-status" class="job-status" role="status" aria-live="polite" hidden></div>
     </section>
@@ -118,7 +115,7 @@
       <p id="diagnostics">Loading site and environment details…</p>
     </details>
 
-    <dialog id="environment-chooser" aria-labelledby="environment-chooser-title" aria-describedby="environment-chooser-message">
+    <dialog id="environment-chooser" hidden aria-labelledby="environment-chooser-title" aria-describedby="environment-chooser-message">
       <h2 id="environment-chooser-title">Choose an Azure environment</h2>
       <p id="environment-chooser-message"></p>
       <label id="subscription-field">Azure subscription
