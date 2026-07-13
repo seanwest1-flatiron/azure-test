@@ -13,7 +13,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$installedRunnerVersion = '2026.07.13.4'
+$installedRunnerVersion = '2026.07.13.5'
 $repositoryBase = 'https://raw.githubusercontent.com/seanwest1-flatiron/azure-test/main'
 $manifest = Invoke-RestMethod -Method GET -Uri "$repositoryBase/version.json?nonce=$([Guid]::NewGuid().ToString('N'))"
 if ([string]::IsNullOrWhiteSpace([string]$manifest.payloadVersion)) {
@@ -59,6 +59,7 @@ switch ($LabPath) {
     'payloads/failed-sign-in.ps1' { $requiredGraphRoles += 'Application.ReadWrite.All' }
     'payloads/browser-failed-sign-in.ps1' { $requiredGraphRoles += 'Application.ReadWrite.All' }
     'payloads/create-failed-sign-in-detection.ps1' { $requiredGraphRoles += @('Application.ReadWrite.All', 'CustomDetection.ReadWrite.All') }
+    'payloads/reset-lisa-password.ps1' { $requiredGraphRoles += 'User-PasswordProfile.ReadWrite.All' }
     'payloads/share-onedrive-file.ps1' { $requiredGraphRoles += 'Files.ReadWrite.All' }
     'payloads/send-email.ps1' { $requiredGraphRoles += 'Mail.Send' }
     'payloads/send-message-batch.ps1' { $requiredGraphRoles += 'Mail.Send' }

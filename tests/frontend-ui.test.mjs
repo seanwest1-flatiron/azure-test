@@ -21,11 +21,14 @@ test("environment updates publish the cache-busted bootstrap runbook", () => {
 test("keeps delegated admin scopes separate from managed-identity application roles", () => {
   assert.match(app, /const GRAPH_SCOPES = \["Application\.Read\.All", "AppRoleAssignment\.ReadWrite\.All"\]/);
   assert.match(app, /"CustomDetection\.ReadWrite\.All"/);
+  assert.match(app, /"User-PasswordProfile\.ReadWrite\.All"/);
   assert.match(app, /"Domain\.Read\.All"/);
   assert.match(app, /"Application\.ReadWrite\.All"/);
   assert.doesNotMatch(app, /const GRAPH_SCOPES = \[[^\]]*Application\.ReadWrite\.All/);
-  assert.match(app, /LAB_APPLICATION_ROLES = Object\.freeze\(\{ failedSignInDetection: Object\.freeze\(\["CustomDetection\.ReadWrite\.All"\]\) \}\)/);
+  assert.match(app, /failedSignInDetection: Object\.freeze\(\["CustomDetection\.ReadWrite\.All"\]\)/);
+  assert.match(app, /resetLisaPassword: Object\.freeze\(\["User-PasswordProfile\.ReadWrite\.All"\]\)/);
   assert.doesNotMatch(app, /CORE_APPLICATION_ROLES = Object\.freeze\(\[[^\]]*CustomDetection\.ReadWrite\.All/);
+  assert.doesNotMatch(app, /CORE_APPLICATION_ROLES = Object\.freeze\(\[[^\]]*User-PasswordProfile\.ReadWrite\.All/);
 });
 
 test("reconciles required managed-identity roles for an existing environment", () => {
@@ -168,4 +171,12 @@ test("places the failed sign-in detection toggle after the three-attempt non-int
   assert.match(index, /id="run-failed-sign-in-detection"[^>]*>Toggle detection</);
   assert.match(app, /failedSignInDetection: \{[^}]*operation: "failedSignInDetection"[^}]*payloadPath: "payloads\/create-failed-sign-in-detection\.ps1"[^}]*label: "Toggle failed sign-in detection"/);
   assert.match(app, /bind\("run-failed-sign-in-detection", "click", \(\) => handleAction\(\(\) => beginLab\("failedSignInDetection"\)\)\)/);
+});
+
+test("wires the Lisa password reset without adding login or SharePoint activity", () => {
+  assert.match(index, /<h2>Reset Lisa Simpson password<\/h2>/);
+  assert.match(index, /id="run-reset-lisa-password"[^>]*>Reset Lisa’s password<\/button>/);
+  assert.match(app, /resetLisaPassword: \{[^}]*operation: "resetLisaPassword"[^}]*payloadPath: "payloads\/reset-lisa-password\.ps1"[^}]*label: "Reset Lisa Simpson password"/);
+  assert.match(app, /bind\("run-reset-lisa-password", "click", \(\) => handleAction\(\(\) => beginLab\("resetLisaPassword"\)\)\)/);
+  assert.doesNotMatch(index, /sign in as Lisa|Lisa.*SharePoint/i);
 });

@@ -24,4 +24,5 @@ Department groups are Microsoft 365 groups. UPNs use the stable pattern `<alias>
 
 ## Account password policy
 
-The West family accounts are persistent identities whose passwords should not be changed by labs unless explicitly requested. Other seeded persona accounts are disposable lab identities; labs may reset their passwords when needed and should not assume those passwords remain stable.
+- Cory West, Kobe West, Rocky West, and Socky West are persistent accounts. Labs must not change their passwords unless explicitly requested.
+- The other seeded persona accounts are disposable lab identities whose passwords may be reset by lab operations and should not be assumed stable.

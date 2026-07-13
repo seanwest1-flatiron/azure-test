@@ -18,7 +18,7 @@ Describe 'After Party bootstrap payload URL' {
         $global:AfterPartyTokenRequests = 0
         $global:AfterPartyTokens = @((New-AfterPartyTestToken -Roles @(
             'Application.ReadWrite.All', 'CustomDetection.ReadWrite.All', 'Domain.Read.All', 'Files.ReadWrite.All', 'Group.ReadWrite.All',
-            'GroupMember.ReadWrite.All', 'LicenseAssignment.Read.All', 'LicenseAssignment.ReadWrite.All', 'Mail.Send', 'User.ReadWrite.All'
+            'GroupMember.ReadWrite.All', 'LicenseAssignment.Read.All', 'LicenseAssignment.ReadWrite.All', 'Mail.Send', 'User-PasswordProfile.ReadWrite.All', 'User.ReadWrite.All'
         )))
         Mock Invoke-RestMethod {
             param($Uri)
@@ -102,6 +102,19 @@ Describe 'After Party bootstrap payload URL' {
 
         $global:AfterPartyTokenRequests | Should -Be 2
         ($output -join "`n") | Should -Match 'Waiting for managed identity Graph token propagation\. Missing roles: .*Application\.ReadWrite\.All'
+        Should -Invoke Start-Sleep -Times 1 -ParameterFilter { $Seconds -eq 5 }
+    }
+
+    It 'requires the password-profile role only for the Lisa password reset payload' {
+        $global:AfterPartyTokens = @(
+            (New-AfterPartyTestToken -Roles @('Domain.Read.All')),
+            (New-AfterPartyTestToken -Roles @('Domain.Read.All', 'User-PasswordProfile.ReadWrite.All'))
+        )
+
+        $output = & $bootstrapPath -LabPath 'payloads/reset-lisa-password.ps1'
+
+        $global:AfterPartyTokenRequests | Should -Be 2
+        ($output -join "`n") | Should -Match 'Waiting for managed identity Graph token propagation\. Missing roles: User-PasswordProfile\.ReadWrite\.All'
         Should -Invoke Start-Sleep -Times 1 -ParameterFilter { $Seconds -eq 5 }
     }
 }

@@ -35,6 +35,7 @@ test("requires a runner version bump for runner configuration changes in the fro
 test("treats managed-identity permission reconciliation as runner-affecting", () => {
   for (const changedLine of [
     'const CORE_APPLICATION_ROLES = Object.freeze(["Application.ReadWrite.All"]);',
+    'resetLisaPassword: Object.freeze(["User-PasswordProfile.ReadWrite.All"]),',
     "async function reconcileRunnerPermissions(lab, runner) {"
   ]) {
     assert.throws(() => validateRunnerVersionChange({
