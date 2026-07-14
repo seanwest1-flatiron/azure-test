@@ -1,21 +1,20 @@
 #!/usr/bin/env node
-"use strict";
-
-import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { randomUUID } from "node:crypto";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { createDevelopmentArmClient, defaultArmOperatorConfigPath, loadArmOperatorConfig } from "./development-arm-auth.mjs";
 
 const require = createRequire(import.meta.url);
 const automation = require("../automation-client.js");
-const ARM = "https://management.azure.com";
+const repositoryRoot = resolve(import.meta.dirname, "..");
 
 function usage(message) {
   if (message) console.error(message);
-  console.error("Usage: node scripts/run-lab.mjs --resource-group <name> --lab <payloads/file.ps1> [--subscription <id>] [--automation-account <name>] [--runbook <name>]");
-  process.exit(2);
+  throw new Error("Usage: node scripts/run-lab.mjs --lab <payloads/file.ps1> [--config <external-config>] [--subscription <id>] [--resource-group <name>] [--automation-account <name>] [--runbook <name>] [--capture-browser-page <1>]");
 }
 
-function argumentsFrom(commandLine) {
+export function argumentsFrom(commandLine) {
   const result = {};
   for (let index = 0; index < commandLine.length; index += 2) {
     const key = commandLine[index];
@@ -26,50 +25,42 @@ function argumentsFrom(commandLine) {
   return result;
 }
 
-function azJson(...args) {
-  try {
-    return JSON.parse(execFileSync("az", [...args, "--output", "json", "--only-show-errors"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }));
-  } catch (error) {
-    const detail = error.stderr?.trim() || error.message;
-    throw new Error(`Azure CLI authentication is unavailable. Run 'az login' and try again. ${detail}`);
-  }
-}
-
-async function main() {
-  const args = argumentsFrom(process.argv.slice(2));
-  if (!args["resource-group"] || !args.lab) usage("Both --resource-group and --lab are required.");
+export async function main(values = process.argv.slice(2), dependencies = {}) {
+  const args = argumentsFrom(values);
+  if (!args.lab) usage("--lab is required.");
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._/-]*\.ps1$/.test(args.lab)) usage("--lab must be a repository-relative PowerShell payload path.");
-
-  const subscriptionId = args.subscription || azJson("account", "show").id;
-  const accessToken = process.env.AFTER_PARTY_ARM_TOKEN || azJson("account", "get-access-token", "--resource", ARM).accessToken;
-  const request = async (path, options = {}, textResponse = false) => {
-    const response = await fetch(`${ARM}${path}`, {
-      ...options,
-      headers: { Accept: "application/json", Authorization: `Bearer ${accessToken}`, ...(options.body ? { "Content-Type": "application/json" } : {}), ...options.headers }
-    });
-    const text = await response.text();
-    if (!response.ok) {
-      let body;
-      try { body = JSON.parse(text); } catch { body = null; }
-      const error = new Error(body?.error?.message || text || `${response.status} ${response.statusText}`);
-      error.status = response.status;
-      throw error;
-    }
-    if (textResponse) return text.trim().replace(/^"|"$/g, "");
-    return text ? JSON.parse(text) : null;
-  };
-  const requestJson = (path, options) => request(path, options);
-  const requestText = path => request(path, {}, true);
+  if (args["capture-browser-page"] && args["capture-browser-page"] !== "1") usage("--capture-browser-page accepts only 1.");
+  const loaded = await (dependencies.loadConfig || loadArmOperatorConfig)({
+    configPath: resolve(args.config || defaultArmOperatorConfigPath()),
+    repositoryRoot
+  });
+  const { config } = loaded;
+  if (args.subscription && args.subscription.toLowerCase() !== config.subscriptionId.toLowerCase()) {
+    throw new Error("--subscription does not match the approved external ARM test configuration.");
+  }
+  if (args["resource-group"] && args["resource-group"].toLowerCase() !== config.resourceGroup.toLowerCase()) {
+    throw new Error("--resource-group does not match the approved external ARM test configuration.");
+  }
+  const subscriptionId = config.subscriptionId;
+  const resourceGroup = config.resourceGroup;
+  const client = (dependencies.createClient || createDevelopmentArmClient)({ config });
+  const { requestJson, requestText } = client;
+  console.error(`Authentication: app-only ARM certificate for ${resourceGroup}; no browser will open.`);
   const runbookName = args.runbook || "AfterPartyBootstrap";
   const runner = args["automation-account"]
-    ? { subscriptionId, resourceGroup: args["resource-group"], automationAccountName: args["automation-account"], runbookName }
-    : await automation.findRunner({ requestJson, subscriptionId, resourceGroup: args["resource-group"], runbookName });
-  if (!runner) throw new Error(`No After Party Automation account was found in resource group '${args["resource-group"]}'.`);
+    ? { subscriptionId, resourceGroup, automationAccountName: args["automation-account"], runbookName }
+    : await automation.findRunner({ requestJson, subscriptionId, resourceGroup, runbookName });
+  if (!runner) throw new Error(`No After Party Automation account was found in resource group '${resourceGroup}'.`);
 
   const jobId = randomUUID();
   console.error(`Starting ${args.lab} in ${runner.automationAccountName}. Job ID: ${jobId}`);
   const parameters = ["payloads/browser-failed-sign-in.ps1", "payloads/tap-sign-in.ps1"].includes(args.lab)
-    ? { SubscriptionId: subscriptionId, ResourceGroup: args["resource-group"], ...(args["attempt-count"] ? { AttemptCount: args["attempt-count"] } : {}) }
+    ? {
+        SubscriptionId: subscriptionId,
+        ResourceGroup: resourceGroup,
+        ...(args["attempt-count"] ? { AttemptCount: args["attempt-count"] } : {}),
+        ...(args["capture-browser-page"] ? { CaptureBrowserPage: args["capture-browser-page"] } : {})
+      }
     : args.lab === "payloads/failed-sign-in.ps1" && args["attempt-count"] ? { AttemptCount: args["attempt-count"] } : {};
   const { jobPath } = await automation.startJob({ requestJson, runner, payloadPath: args.lab, jobId, parameters });
   let lastStatus;
@@ -85,10 +76,12 @@ async function main() {
   });
   if (result.output) console.log(result.output);
   else console.log(result.job?.properties?.statusDetails || `Job finished with status ${result.status}.`);
-  if (result.status !== "Completed") process.exitCode = 1;
+  if (result.status !== "Completed") throw new Error(`Automation job finished with status ${result.status}.`);
+  return result;
 }
 
-main().catch(error => {
+const isMain = process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url;
+if (isMain) main().catch(error => {
   console.error(error.message);
   process.exitCode = 1;
 });

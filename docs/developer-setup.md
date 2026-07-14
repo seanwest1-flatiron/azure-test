@@ -5,8 +5,21 @@ This workflow separates fast local development from tenant validation:
 - The dependency-free frontend server owns `http://localhost:4173/` and can stay running while files are edited.
 - The TAP harness uses the same Playwright browser flow as the ACI worker. It creates an isolated, nonpersistent browser context for every attempt and intercepts its own `http://localhost` OAuth callback without opening a listener or using port 4173.
 - A dedicated development-only confidential Entra application uses app-only Microsoft Graph access to create one single-use TAP for Lisa immediately before a run and delete only that TAP afterward. The existing `After Party Failed Sign-In Generator` public client performs the interactive sign-in and delegated `/me` request.
+- A separate development-only ARM test operator uses a certificate and narrowly scoped Azure RBAC to start and inspect Automation jobs or direct ACI diagnostics without asking a human to sign in on every run.
 
 Do not use this workflow with a production tenant. The app-only TAP permission applies tenant-wide even though this harness is hard-coded to Lisa's tenant-relative alias and refuses to replace an existing TAP.
+
+## Which commands authenticate
+
+Run the repository-maintained inventory whenever the distinction is unclear:
+
+```bash
+npm run test:list
+```
+
+Mocked tests and offline setup checks never request a token. The local TAP flow uses app-only Graph access and automates Lisa's fresh TAP session; it does not ask the developer to sign in. Normal Automation and ACI development commands use the app-only ARM test operator. Only frontend MSAL testing and one-time Entra or Azure administration require a human account.
+
+Automated commands never fall back to interactive authentication. If an external certificate, configuration, or role assignment is missing, the command fails with a setup error instead of opening a browser.
 
 ## Prerequisites
 
@@ -94,6 +107,63 @@ Stop here until the tenant owner has reviewed and approved these changes. No cli
    ```
 
 The development certificate should be removed from the app registration and the external files deleted when this harness is no longer needed. Rotate it before its expiry rather than extending an old credential indefinitely.
+
+## One-time app-only Azure test operator
+
+This identity is separate from `After Party Local TAP Harness`. It receives Azure RBAC but no Microsoft Graph API permissions, keeping tenant-wide TAP provisioning separate from Azure resource control.
+
+1. Generate its certificate outside the repository:
+
+   ```bash
+   npm run arm:setup -- certificate
+   ```
+
+   Keep `~/.config/after-party/arm-test-operator/credential.pem` private. Upload only `certificate.cer`.
+
+2. In **Microsoft Entra admin center > Identity > Applications > App registrations**, create a single-tenant app named `After Party Development ARM Test Operator`. Do not configure a redirect URI or client secret. Remove the default delegated `User.Read` permission if the portal added it; this app should have no Microsoft Graph permissions.
+
+3. Under **Certificates & secrets > Certificates**, upload only `~/.config/after-party/arm-test-operator/certificate.cer`.
+
+4. Record the Application (client) ID and write the external configuration:
+
+   ```bash
+   npm run arm:setup -- configure \
+     --tenant-id TENANT_GUID \
+     --client-id ARM_OPERATOR_CLIENT_GUID \
+     --subscription-id DEVELOPMENT_SUBSCRIPTION_GUID \
+     --resource-group DEVELOPMENT_RESOURCE_GROUP
+   ```
+
+5. In the configured development resource group's **Access control (IAM)**, assign the app:
+
+   - `Reader`, so it can discover the existing runner and verify cleanup.
+   - `Azure Container Instances Contributor Role`, so an explicitly approved direct ACI diagnostic can create, inspect, and delete only ACI resources within this development resource group.
+
+6. Open the existing After Party Automation account in that resource group. Under its **Access control (IAM)**, assign the app `Automation Operator`, allowing it to start and inspect jobs without editing the runbook or granting access.
+
+7. Validate local files without authenticating or contacting Azure:
+
+   ```bash
+   npm run arm:check -- --offline
+   ```
+
+8. After RBAC propagation, run the read-only app-only check:
+
+   ```bash
+   npm run arm:check
+   ```
+
+   This obtains an application token, validates its tenant and application claims, reads the configured resource group and runner, and verifies the three expected role assignments. It never opens a browser or changes a resource.
+
+Run an explicitly approved Automation payload with:
+
+```bash
+npm run lab:run -- --lab payloads/tap-sign-in.ps1
+```
+
+Add `--capture-browser-page 1` when sanitized TAP page diagnostics are useful. The configured subscription and resource group are the authorization boundary; command-line overrides must match them. A different development environment requires a separate external configuration file passed with `--config`.
+
+Rotate the ARM certificate before expiry. Remove its Azure role assignments, app registration, and external files when unattended development validation is no longer required.
 
 ## Local TAP test
 

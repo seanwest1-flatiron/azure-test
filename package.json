@@ -6,9 +6,13 @@
   },
   "scripts": {
     "test:mocked": "pwsh ./tests/run-tests.ps1",
+    "test:list": "node ./scripts/list-development-tests.mjs",
     "tap:setup": "node ./scripts/setup-local-tap-harness.mjs",
     "tap:check": "node ./scripts/check-local-tap-setup.mjs",
-    "tap:local": "node ./scripts/run-local-tap-sign-in.mjs"
+    "tap:local": "node ./scripts/run-local-tap-sign-in.mjs",
+    "arm:setup": "node ./scripts/setup-development-arm-auth.mjs",
+    "arm:check": "node ./scripts/check-development-arm-auth.mjs",
+    "lab:run": "node ./scripts/run-lab.mjs"
   },
   "devDependencies": {
     "@azure/identity": "4.13.1",

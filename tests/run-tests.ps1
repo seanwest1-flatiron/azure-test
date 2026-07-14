@@ -23,6 +23,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Browser worker tests failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'TAP sign-in worker tests failed.' }
 & node --test (Join-Path $PSScriptRoot 'local-tap-harness.test.mjs')
 if ($LASTEXITCODE -ne 0) { throw 'Local TAP harness tests failed.' }
+& node --test (Join-Path $PSScriptRoot 'development-arm-auth.test.mjs')
+if ($LASTEXITCODE -ne 0) { throw 'Development ARM authentication tests failed.' }
 & node --test (Join-Path $PSScriptRoot 'prerequisite-flow.test.mjs')
 if ($LASTEXITCODE -ne 0) { throw 'JavaScript tests failed.' }
 & node --test (Join-Path $PSScriptRoot 'runner-permissions.test.mjs')
