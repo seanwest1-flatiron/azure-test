@@ -158,16 +158,45 @@ function sameCallbackEndpoint(value, redirectUri) {
   } catch { return false; }
 }
 
-function outcomeFromUrl(value, redirectUri, expectedState) {
+export function outcomeFromUrl(value, redirectUri, expectedState) {
   try {
     const current = new URL(value);
     if (!sameCallbackEndpoint(current, redirectUri)) return null;
     const oauthError = current.searchParams.get("error");
-    if (oauthError) return { kind: "error", message: `${oauthError}: ${current.searchParams.get("error_description") || "OAuth authorization failed."}` };
-    if (!current.searchParams.has("code")) return null;
+    if (!oauthError && !current.searchParams.has("code")) return null;
     if (current.searchParams.get("state") !== expectedState) return { kind: "error", message: "The OAuth state value did not match." };
+    if (oauthError) return { kind: "error", message: `${oauthError}: ${current.searchParams.get("error_description") || "OAuth authorization failed."}` };
     return { kind: "code", code: current.searchParams.get("code") };
   } catch { return null; }
+}
+
+export async function createCallbackObserver(context, redirectUri, expectedState, { fulfillCallback = true, checkpoint = () => {} } = {}) {
+  let outcome = null;
+  const capture = value => {
+    if (outcome) return outcome;
+    const candidate = outcomeFromUrl(value, redirectUri, expectedState);
+    if (candidate) outcome = candidate;
+    return candidate;
+  };
+  context.on("request", request => capture(request.url()));
+  context.on("framenavigated", frame => capture(frame.url()));
+
+  if (fulfillCallback) {
+    try {
+      await context.route(url => sameCallbackEndpoint(url, redirectUri), async route => {
+        capture(route.request().url());
+        try {
+          await route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><title>After Party sign-in captured</title><p>The sign-in callback was captured. You can close this window.</p>" });
+        } catch {
+          checkpoint("callback-fulfillment", "failed-after-capture");
+          await route.abort().catch(() => {});
+        }
+      });
+    } catch {
+      checkpoint("callback-fulfillment", "unavailable");
+    }
+  }
+  return Object.freeze({ getOutcome: () => outcome });
 }
 
 async function submitTap(page, upn, temporaryAccessPass, emitPageCapture, checkpoint, signal) {
@@ -209,11 +238,11 @@ async function submitTap(page, upn, temporaryAccessPass, emitPageCapture, checkp
   throw new Error("Microsoft did not display a username, account-selection, or Temporary Access Pass screen.");
 }
 
-async function waitForOutcome(page, getCallbackUrl, redirectUri, expectedState, timeoutMs, temporaryAccessPass, emitPageCapture, checkpoint, signal) {
+async function waitForOutcome(page, getCallbackOutcome, redirectUri, expectedState, timeoutMs, temporaryAccessPass, emitPageCapture, checkpoint, signal) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     signal?.throwIfAborted();
-    const callbackOutcome = outcomeFromUrl(getCallbackUrl() || page.url(), redirectUri, expectedState);
+    const callbackOutcome = getCallbackOutcome() || outcomeFromUrl(page.url(), redirectUri, expectedState);
     if (callbackOutcome) return callbackOutcome;
     const text = await visiblePageText(page, temporaryAccessPass);
     if (isRegistrationInterruption(page.url(), text)) return { kind: "registration", message: text };
@@ -289,17 +318,13 @@ export async function runTapSignIn(configuration, dependencies = {}) {
       signal?.throwIfAborted();
       const context = await browser.newContext();
       checkpoint("browser-context", "fresh");
+      const callbackObserver = await createCallbackObserver(context, redirectUri, state, { checkpoint });
       const page = await context.newPage();
-      let callbackUrl = "";
       try {
-        await page.route(url => sameCallbackEndpoint(url, redirectUri), async route => {
-          callbackUrl = route.request().url();
-          await route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><title>After Party sign-in captured</title><p>The sign-in callback was captured. You can close this window.</p>" });
-        });
         await page.goto(authorizeUrl.toString(), { waitUntil: "domcontentloaded", timeout: 45000 });
         const submission = await submitTap(page, upn, temporaryAccessPass, emitPageCapture, checkpoint, signal);
         if (submission.kind === "registration") outcome = submission;
-        else outcome = await waitForOutcome(page, () => callbackUrl, redirectUri, state, 30000, temporaryAccessPass, emitPageCapture, checkpoint, signal);
+        else outcome = await waitForOutcome(page, callbackObserver.getOutcome, redirectUri, state, 30000, temporaryAccessPass, emitPageCapture, checkpoint, signal);
         if (["code", "registration"].includes(outcome.kind)) break;
         const retryable = /temporary access pass|try again|incorrect|invalid|expired|not recognized/i.test(outcome.message || "");
         if (!retryable || propagationAttempt === maxPropagationAttempts) {

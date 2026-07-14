@@ -4,7 +4,7 @@ import test from "node:test";
 
 process.env.AFTER_PARTY_WORKER_TEST = "1";
 process.env.TEMPORARY_ACCESS_PASS = "secret-tap-value";
-const { CONSENT_SUBMIT_FALLBACK_SELECTOR, TAP_INPUT_SELECTOR, TAP_SUBMIT_FALLBACK_SELECTOR, base64Url, buildAuthorizeUrl, clickAccountSelection, clickConsentAccept, clickTapSignIn, createPkce, credentialEntryStage, decodeJwtClaim, diagnosticUrl, isAccountSelectionPage, isPermissionsRequestedPage, isRegistrationInterruption, runTapSignIn, safeText, tenantUserPrincipalName } = await import("../payloads/tap-sign-in-worker.mjs");
+const { CONSENT_SUBMIT_FALLBACK_SELECTOR, TAP_INPUT_SELECTOR, TAP_SUBMIT_FALLBACK_SELECTOR, base64Url, buildAuthorizeUrl, clickAccountSelection, clickConsentAccept, clickTapSignIn, createCallbackObserver, createPkce, credentialEntryStage, decodeJwtClaim, diagnosticUrl, isAccountSelectionPage, isPermissionsRequestedPage, isRegistrationInterruption, outcomeFromUrl, runTapSignIn, safeText, tenantUserPrincipalName } = await import("../payloads/tap-sign-in-worker.mjs");
 
 test("builds Lisa's UPN from the connected tenant domain", () => {
   assert.equal(tenantUserPrincipalName("lisa.simpson", "student.onmicrosoft.com"), "lisa.simpson@student.onmicrosoft.com");
@@ -41,6 +41,57 @@ test("builds an isolated interactive authorization request with PKCE", () => {
   assert.equal(url.searchParams.get("scope"), "openid profile https://graph.microsoft.com/User.Read");
   assert.equal(url.searchParams.get("code_challenge"), "expected-challenge");
   assert.equal(url.searchParams.get("code_challenge_method"), "S256");
+});
+
+test("validates callback state for authorization codes and OAuth errors", () => {
+  assert.deepEqual(outcomeFromUrl("http://localhost/?code=code&state=expected", "http://localhost", "expected"), { kind: "code", code: "code" });
+  assert.deepEqual(outcomeFromUrl("http://localhost/?error=access_denied&error_description=Denied&state=expected", "http://localhost", "expected"), { kind: "error", message: "access_denied: Denied" });
+  assert.deepEqual(outcomeFromUrl("http://localhost/?error=access_denied&state=wrong", "http://localhost", "expected"), { kind: "error", message: "The OAuth state value did not match." });
+  assert.equal(outcomeFromUrl("https://login.microsoftonline.com/", "http://localhost", "expected"), null);
+});
+
+function callbackContext() {
+  const listeners = new Map();
+  let routeRegistration;
+  return {
+    on(event, handler) { listeners.set(event, handler); },
+    async route(predicate, handler) { routeRegistration = { predicate, handler }; },
+    emit(event, value) { listeners.get(event)?.(value); },
+    get routeRegistration() { return routeRegistration; }
+  };
+}
+
+test("captures a context request before localhost becomes a failed navigation page", async () => {
+  const context = callbackContext();
+  const observer = await createCallbackObserver(context, "http://localhost", "expected", { fulfillCallback: false });
+  context.emit("request", { url: () => "http://localhost/?code=early-code&state=expected" });
+  context.emit("framenavigated", { url: () => "chrome-error://chromewebdata/" });
+  assert.deepEqual(observer.getOutcome(), { kind: "code", code: "early-code" });
+  assert.equal(context.routeRegistration, undefined);
+});
+
+test("captures a context navigation fallback from any page or popup", async () => {
+  const context = callbackContext();
+  const observer = await createCallbackObserver(context, "http://localhost", "expected", { fulfillCallback: false });
+  context.emit("request", { url: () => "https://login.microsoftonline.com/authorize" });
+  assert.equal(observer.getOutcome(), null);
+  context.emit("framenavigated", { url: () => "http://localhost/?code=frame-code&state=expected" });
+  assert.deepEqual(observer.getOutcome(), { kind: "code", code: "frame-code" });
+});
+
+test("retains the callback when optional route fulfillment fails", async () => {
+  const checkpoints = [];
+  const context = callbackContext();
+  const observer = await createCallbackObserver(context, "http://localhost", "expected", { checkpoint: (...value) => checkpoints.push(value) });
+  const callback = "http://localhost/?code=route-code&state=expected";
+  assert.equal(context.routeRegistration.predicate(new URL(callback)), true);
+  await context.routeRegistration.handler({
+    request: () => ({ url: () => callback }),
+    fulfill: async () => { throw new Error("Chromium rejected fulfillment"); },
+    abort: async () => {}
+  });
+  assert.deepEqual(observer.getOutcome(), { kind: "code", code: "route-code" });
+  assert.deepEqual(checkpoints, [["callback-fulfillment", "failed-after-capture"]]);
 });
 
 test("treats account selection as optional and selects Lisa or another account", async () => {
@@ -160,7 +211,9 @@ test("captures each recognized page state once while masking visible inputs", ()
 test("uses a fresh nonpersistent browser context and intercepts its own localhost callback", () => {
   const source = readFileSync(new URL("../payloads/tap-sign-in-worker.mjs", import.meta.url), "utf8");
   assert.match(source, /browser\.newContext\(\)/);
-  assert.match(source, /page\.route\(url => sameCallbackEndpoint/);
+  assert.match(source, /context\.on\("request"/);
+  assert.match(source, /context\.on\("framenavigated"/);
+  assert.match(source, /context\.route\(url => sameCallbackEndpoint/);
   assert.doesNotMatch(source, /launchPersistentContext|userDataDir|storageState/);
 });
 
@@ -168,8 +221,7 @@ test("completes the reusable browser callback, token exchange, and Graph me flow
   const tenantId = "11111111-1111-4111-8111-111111111111";
   let stage = "username";
   let currentUrl = "about:blank";
-  let routePredicate;
-  let routeHandler;
+  const contextListeners = new Map();
   let contextCloseCount = 0;
   let browserCloseCount = 0;
   const locator = selector => {
@@ -195,16 +247,18 @@ test("completes the reusable browser callback, token exchange, and Graph me flow
       click: async () => {
         const state = new URL(currentUrl).searchParams.get("state");
         const callback = `http://localhost/?code=authorization-code&state=${state}`;
-        assert.equal(routePredicate(new URL(callback)), true);
-        await routeHandler({
-          request: () => ({ url: () => callback }),
-          fulfill: async value => assert.equal(value.status, 200)
-        });
+        contextListeners.get("request")({ url: () => callback });
+        currentUrl = "chrome-error://chromewebdata/";
       }
     }) })
   };
   const browser = {
-    newContext: async () => ({ newPage: async () => page, close: async () => { contextCloseCount += 1; } }),
+    newContext: async () => ({
+      on: (event, handler) => contextListeners.set(event, handler),
+      route: async () => {},
+      newPage: async () => page,
+      close: async () => { contextCloseCount += 1; }
+    }),
     close: async () => { browserCloseCount += 1; }
   };
   const launches = [];
