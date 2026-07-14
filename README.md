@@ -26,5 +26,6 @@ Viewing and editing the unauthenticated frontend requires no Azure configuration
 - [Tenant baseline](docs/tenant-baseline.md) — expected licenses, users, groups, and memberships
 - [Testing and live validation](docs/testing.md) — mocked tests and explicit authorization boundaries
 - [Local frontend and TAP development](docs/developer-setup.md) — Playwright setup, app registration, mocked and live TAP workflows
+- [Development tenant configuration](docs/development-tenant-configuration.md) — concise record of one-time Entra, TAP policy, redirect URI, and Azure RBAC changes
 - `npm run test:list` — maintained inventory of offline, app-only, automated TAP, and intentionally human-authenticated workflows
 - [Coding-agent instructions](AGENTS.md) — durable repository working conventions

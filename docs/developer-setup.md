@@ -1,5 +1,7 @@
 # Local frontend and TAP sign-in development
 
+For a compact record of the one-time Entra and Azure changes, separate from local installation, see [Development tenant configuration record](development-tenant-configuration.md).
+
 This workflow separates fast local development from tenant validation:
 
 - The dependency-free frontend server owns `http://localhost:4173/` and can stay running while files are edited.
